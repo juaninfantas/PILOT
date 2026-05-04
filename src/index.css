@@ -1,0 +1,369 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Great+Vibes&family=Space+Grotesk:wght@500;600;700&display=swap");
+@import "tailwindcss";
+
+/*
+ * Logo script: Great Vibes (Google Fonts). Si querés Bulgary Rose local, copiá un .otf válido a
+ * public/fonts/BulgaryRose-Regular.otf y descomentá el @font-face; cambiá también .font-pilot-logo.
+ *
+ * @font-face {
+ *   font-family: "Bulgary Rose";
+ *   font-style: normal;
+ *   font-weight: 400;
+ *   font-display: swap;
+ *   src: url("/fonts/BulgaryRose-Regular.otf") format("opentype");
+ * }
+ */
+
+@theme inline {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-neo: "Space Grotesk", "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+}
+
+/* Tema “papelería / heritage”: crema, azul marino, poca sombra, líneas finas (MILAN 430) */
+:root {
+  --background: #f2ebe1;
+  --foreground: #1a2d4a;
+  --card: #fffcf7;
+  --muted: #5c6472;
+  --primary: #1a2d4a;
+  --primary-foreground: #f2ebe1;
+  --secondary: #d9cfc0;
+  --secondary-foreground: #1a2d4a;
+  --accent: #1a2d4a;
+  --border: #c4b5a0;
+  --ring: #1a2d4a;
+  /* --jif-gold: acento (compat. con clases existentes) = azul marino en este tema */
+  --jif-gold: #1a2d4a;
+  --jif-line: #b8a896;
+  --neo-ink: #1a2d4a;
+  /* Panel “papel” para botones neo */
+  --neo-pop: #ebe4d6;
+  --neo-shadow: none;
+  --neo-shadow-sm: 0 1px 0 rgba(26, 45, 74, 0.06);
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-neo {
+  font-family: var(--font-neo);
+}
+
+.font-pilot-logo {
+  font-family: "Great Vibes", "Brush Script MT", "Snell Roundhand", cursive, serif;
+  font-style: normal;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.jif-page {
+  max-width: 1200px;
+}
+
+.jif-hero {
+  font-family: var(--font-neo);
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: var(--foreground);
+}
+
+.jif-caps {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.jif-dim {
+  color: var(--muted);
+}
+
+.jif-panel {
+  border: 1px solid var(--jif-line);
+  background: var(--card);
+}
+
+.jif-kanban-col {
+  border: 1px solid var(--jif-line);
+  background: #e8e0d4;
+}
+
+.jif-kanban-col-active {
+  outline: 1px solid rgba(26, 45, 74, 0.25);
+  background: #f0e9dd;
+}
+
+.jif-card {
+  border: 1px solid var(--jif-line);
+  background: var(--card);
+}
+
+.jif-input {
+  border: 1px solid var(--jif-line);
+  background: #fffcf7;
+  color: var(--foreground);
+  border-radius: 0;
+  font-size: 0.875rem;
+  padding: 0 0.75rem;
+}
+
+.jif-input:focus-visible {
+  outline: 1px solid var(--jif-gold);
+  outline-offset: 0;
+}
+
+.jif-table td,
+.jif-table th {
+  vertical-align: middle;
+}
+
+.jif-dropzone {
+  border: 1px dashed rgba(26, 45, 74, 0.28);
+  background: rgba(26, 45, 74, 0.03);
+}
+
+.jif-nav-item {
+  display: block;
+  padding: 0.55rem 0.75rem 0.55rem 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.jif-nav-item:hover {
+  color: var(--foreground);
+}
+
+.jif-nav-item-active {
+  color: var(--jif-gold);
+  border-left-color: var(--jif-gold);
+  background: linear-gradient(90deg, rgba(26, 45, 74, 0.06) 0%, transparent 100%);
+}
+
+.jif-nav-item-sub {
+  padding-left: 1.35rem;
+}
+
+.jif-btn-primary {
+  border: 1px solid var(--jif-gold);
+  background: var(--jif-gold) !important;
+  color: var(--primary-foreground) !important;
+  border-radius: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.6rem 1rem;
+  box-shadow: none;
+}
+
+.jif-btn-primary:hover {
+  filter: brightness(1.04);
+}
+
+.jif-btn-ghost {
+  background: transparent !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--jif-line) !important;
+  border-radius: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.5rem 0.9rem;
+  box-shadow: none;
+}
+
+.jif-btn-ghost:hover {
+  border-color: var(--jif-gold) !important;
+  color: var(--jif-gold) !important;
+}
+
+a.jif-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.neo-page {
+  position: relative;
+}
+
+.neo-card {
+  border: 1px solid var(--jif-line);
+  background: var(--card);
+  border-radius: 0;
+  box-shadow: var(--neo-shadow-sm);
+}
+
+.neo-field {
+  height: 2.5rem;
+  width: 100%;
+  border-radius: 0;
+  border: 1px solid var(--jif-line);
+  background: #fffcf7;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--foreground);
+  box-shadow: none;
+}
+.neo-field:focus-visible {
+  outline: 1px solid var(--jif-gold);
+  outline-offset: 0;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+::selection {
+  background: rgba(26, 45, 74, 0.12);
+  color: var(--foreground);
+}
+
+/* Calendario: bloque claro, separado del tema oscuro del resto de la app */
+.pilot-rbc--light {
+  --pilot-rbc-text: #1a2d4a;
+  --pilot-rbc-border: #c4b5a0;
+  --pilot-rbc-muted: #5c6472;
+  --pilot-rbc-surface: #fffcf7;
+  --pilot-rbc-surface-2: #f2ebe1;
+}
+
+.pilot-rbc--light .rbc-calendar {
+  color: var(--pilot-rbc-text);
+  font-size: 0.8125rem;
+}
+
+.pilot-rbc--light .rbc-toolbar {
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.pilot-rbc--light .rbc-toolbar label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pilot-rbc-muted);
+}
+
+.pilot-rbc--light .rbc-toolbar button {
+  background: #fff;
+  border: 1px solid var(--pilot-rbc-border);
+  color: #334155;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  padding: 0.35rem 0.65rem;
+}
+
+.pilot-rbc--light .rbc-toolbar button:hover,
+.pilot-rbc--light .rbc-toolbar button:focus {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.pilot-rbc--light .rbc-toolbar button.rbc-active {
+  background: #1a2d4a;
+  border-color: #1a2d4a;
+  color: #f2ebe1;
+}
+
+.pilot-rbc--light .rbc-month-view,
+.pilot-rbc--light .rbc-time-view,
+.pilot-rbc--light .rbc-agenda-view {
+  border: 1px solid var(--pilot-rbc-border);
+  border-radius: 0.375rem;
+  background: var(--pilot-rbc-surface);
+  overflow: hidden;
+}
+
+.pilot-rbc--light .rbc-header,
+.pilot-rbc--light .rbc-time-header-content,
+.pilot-rbc--light .rbc-time-content,
+.pilot-rbc--light .rbc-time-gutter,
+.pilot-rbc--light .rbc-day-bg,
+.pilot-rbc--light .rbc-timeslot-group {
+  border-color: var(--pilot-rbc-border);
+}
+
+.pilot-rbc--light .rbc-time-header,
+.pilot-rbc--light .rbc-header,
+.pilot-rbc--light .rbc-time-gutter,
+.pilot-rbc--light .rbc-time-header-gutter,
+.pilot-rbc--light .rbc-label,
+.pilot-rbc--light .rbc-time-slot {
+  color: var(--pilot-rbc-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.pilot-rbc--light .rbc-off-range-bg {
+  background: #f1f5f9;
+}
+
+.pilot-rbc--light .rbc-today {
+  background: #e2ddd3;
+}
+
+.pilot-rbc--light .rbc-current-time-indicator {
+  background-color: #2563eb;
+}
+
+.pilot-rbc--light .rbc-show-more {
+  color: #2563eb;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.pilot-rbc--light .rbc-event {
+  box-shadow: none;
+}
+
+.pilot-rbc--light .rbc-event:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+.pilot-rbc--light .rbc-agenda-view table,
+.pilot-rbc--light .rbc-agenda-view table tbody > tr {
+  border-color: var(--pilot-rbc-border);
+  color: var(--pilot-rbc-text);
+}
