@@ -24,6 +24,10 @@ export type PropertyShareVisibility = {
   show_spec_amenities: boolean;
   show_description: boolean;
   show_photos: boolean;
+  /** Cadena «Etiqueta: valor › …» desde GeoLevelDef + GeoUnit */
+  show_geo_path: boolean;
+  show_coordinates: boolean;
+  show_external_map_link: boolean;
 };
 
 export const FULL_SHARE_VISIBILITY: PropertyShareVisibility = {
@@ -47,6 +51,9 @@ export const FULL_SHARE_VISIBILITY: PropertyShareVisibility = {
   show_spec_amenities: true,
   show_description: true,
   show_photos: true,
+  show_geo_path: true,
+  show_coordinates: false,
+  show_external_map_link: false,
 };
 
 const SPEC_FLAG_KEYS: (keyof PropertyShareVisibility)[] = [
@@ -92,6 +99,9 @@ export type PropertyShareFormatRow = {
   show_spec_amenities: boolean;
   show_description: boolean;
   show_photos: boolean;
+  show_geo_path: boolean;
+  show_coordinates: boolean;
+  show_external_map_link: boolean;
 };
 
 /** Orden: marcado en BD → nombre «Completa» → primero alfabético (es). */
@@ -127,6 +137,9 @@ export function visibilityFromFormatRow(row: PropertyShareFormatRow): PropertySh
     show_spec_amenities: row.show_spec_amenities,
     show_description: row.show_description,
     show_photos: row.show_photos,
+    show_geo_path: row.show_geo_path,
+    show_coordinates: row.show_coordinates,
+    show_external_map_link: row.show_external_map_link,
   };
 }
 
@@ -164,6 +177,9 @@ export function parseShareVisibility(raw: unknown): PropertyShareVisibility {
     show_spec_amenities: triBool(o, "show_spec_amenities", legacySpecs),
     show_description: b("show_description"),
     show_photos: b("show_photos"),
+    show_geo_path: triBool(o, "show_geo_path", true),
+    show_coordinates: triBool(o, "show_coordinates", false),
+    show_external_map_link: triBool(o, "show_external_map_link", false),
   };
 }
 
@@ -183,6 +199,10 @@ export function filterPdfInputForShare(input: PublicPropertyPdfInput, v: Propert
     city_zone: v.show_city_zone ? pr.city_zone : "",
     address: v.show_street_address ? pr.address : null,
     description: v.show_description ? pr.description : null,
+    geo_unit_id: v.show_geo_path ? pr.geo_unit_id ?? null : null,
+    geo_path_labeled: v.show_geo_path ? pr.geo_path_labeled ?? null : null,
+    lat: v.show_coordinates ? pr.lat ?? null : null,
+    lng: v.show_coordinates ? pr.lng ?? null : null,
   };
   return {
     organization: org,
@@ -211,6 +231,16 @@ export function buildSharePlainText(input: PublicPropertyPdfInput, v: PropertySh
   if (v.show_city_zone && pr.city_zone?.trim()) locParts.push(pr.city_zone.trim());
   if (v.show_street_address && pr.address?.trim()) locParts.push(pr.address.trim());
   if (locParts.length) lines.push(locParts.join(" · "));
+
+  if (v.show_geo_path && pr.geo_path_labeled?.trim()) {
+    lines.push(pr.geo_path_labeled.trim());
+  }
+  if (v.show_coordinates && pr.lat != null && pr.lng != null) {
+    lines.push(`Coord.: ${Number(pr.lat).toFixed(5)}, ${Number(pr.lng).toFixed(5)}`);
+  }
+  if (v.show_external_map_link && pr.lat != null && pr.lng != null) {
+    lines.push(`Mapa: https://www.google.com/maps?q=${encodeURIComponent(`${pr.lat},${pr.lng}`)}`);
+  }
 
   if (v.show_price && input.public_price) {
     const pp = input.public_price;

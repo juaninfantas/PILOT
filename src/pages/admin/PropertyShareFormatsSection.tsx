@@ -28,9 +28,12 @@ const membreteFlags: FlagItem[] = [
 membreteFlags.sort(sortByLabel);
 
 const ubicacionFlags: FlagItem[] = [
-  { key: "show_street_address", label: "Dirección de calle" },
+  { key: "show_city_zone", label: "Ciudad / zona (texto libre)" },
+  { key: "show_coordinates", label: "Coordenadas (lat / lng)" },
+  { key: "show_external_map_link", label: "Enlace a mapa externo (Google)" },
+  { key: "show_geo_path", label: "Ubicación maestro (país › … con etiquetas)" },
   { key: "show_property_title", label: "Título de la propiedad" },
-  { key: "show_city_zone", label: "Zona / ciudad" },
+  { key: "show_street_address", label: "Dirección de calle" },
 ];
 ubicacionFlags.sort(sortByLabel);
 
@@ -109,6 +112,9 @@ function defaultDraft(): DraftState {
     show_spec_amenities: true,
     show_description: true,
     show_photos: true,
+    show_geo_path: true,
+    show_coordinates: false,
+    show_external_map_link: false,
   };
 }
 
@@ -135,6 +141,9 @@ function rowToDraft(row: FormatRow): DraftState {
     show_spec_amenities: row.show_spec_amenities,
     show_description: row.show_description,
     show_photos: row.show_photos,
+    show_geo_path: row.show_geo_path,
+    show_coordinates: row.show_coordinates,
+    show_external_map_link: row.show_external_map_link,
   };
 }
 
@@ -279,6 +288,9 @@ export function PropertyShareFormatsSection() {
       show_spec_amenities: draft.show_spec_amenities,
       show_description: draft.show_description,
       show_photos: draft.show_photos,
+      show_geo_path: draft.show_geo_path,
+      show_coordinates: draft.show_coordinates,
+      show_external_map_link: draft.show_external_map_link,
     };
     const { error } = editing
       ? await supabase.from("PropertyShareFormat").update(payload).eq("id", editing.id).eq("organization_id", org.id)

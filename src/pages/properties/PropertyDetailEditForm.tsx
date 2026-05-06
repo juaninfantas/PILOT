@@ -1,5 +1,4 @@
-import type { FormEvent } from "react";
-import { Button } from "../../components/ui/button";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
@@ -8,7 +7,16 @@ import { PROPERTY_KIND_LABEL, PROPERTY_KINDS } from "../../lib/property-options"
 import { LISTING_STATUS_KEYS, LISTING_STATUS_LABEL } from "../../lib/property-listing-status";
 import { MANAGEMENT_OPTIONS, parseManagement } from "../../lib/property-management";
 import type { Database } from "../../types/database";
+import { geocodeAddress } from "../../lib/geocode";
+import { supabase } from "../../lib/supabase";
 import { PropertyContactsPanel } from "./PropertyContactsPanel";
+import { GeoCascadingSelect } from "../../components/geo/GeoCascadingSelect";
+import { Button } from "../../components/ui/button";
+import type { MapPin } from "../../components/map/PropertyMap";
+
+const PropertyMap = lazy(() => import("../../components/map/PropertyMap").then((m) => ({ default: m.PropertyMap })));
+
+const DEFAULT_GEO_COUNTRY = "AR";
 
 const EDIT_TABS = [
   { id: "general", label: "General" },
@@ -41,6 +49,43 @@ export function PropertyDetailEditForm({
   mainSaving,
 }: PropertyDetailEditFormProps) {
   const idx = EDIT_TABS.findIndex((t) => t.id === editTab);
+  const [showMap, setShowMap] = useState(false);
+  const [draftLatLng, setDraftLatLng] = useState<{ lat: number; lng: number } | null>(null);
+
+  async function geolocateFromFields() {
+    const address = (document.getElementById("address") as HTMLInputElement | null)?.value?.trim() ?? "";
+    const postal = (document.getElementById("postal_code") as HTMLInputElement | null)?.value?.trim() ?? "";
+    const city = (document.getElementById("city_zone_hidden") as HTMLInputElement | null)?.value?.trim() ?? "";
+    const geoUnit = (document.getElementById("geo_unit_id_hidden") as HTMLInputElement | null)?.value?.trim() ?? "";
+    let geoLine = "";
+    if (geoUnit) {
+      const { data } = await supabase.rpc("geo_unit_path_line", { p_unit_id: geoUnit });
+      geoLine = typeof data === "string" ? data.trim() : "";
+    }
+    const q = [address, postal, city, geoLine].filter(Boolean).join(", ");
+    if (!q) return;
+    const g = await geocodeAddress(q);
+    if (!g) return;
+    const la = document.getElementById("lat") as HTMLInputElement | null;
+    const ln = document.getElementById("lng") as HTMLInputElement | null;
+    if (la) la.value = String(g.lat);
+    if (ln) ln.value = String(g.lng);
+    setDraftLatLng({ lat: g.lat, lng: g.lng });
+    setShowMap(true);
+  }
+
+  const mapPin: MapPin | null =
+    (draftLatLng ?? (property.lat != null && property.lng != null ? { lat: property.lat, lng: property.lng } : null))
+      ? {
+          id: property.id,
+          title: property.title,
+          city_zone: property.city_zone,
+          lat: (draftLatLng?.lat ?? property.lat)!,
+          lng: (draftLatLng?.lng ?? property.lng)!,
+          priceLabel: "—",
+          kindLabel: PROPERTY_KIND_LABEL[property.kind] ?? property.kind,
+        }
+      : null;
 
   const tabNavFooter = (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
@@ -128,14 +173,6 @@ export function PropertyDetailEditForm({
                   ))}
                 </select>
               </div>
-              <div className="md:col-span-6">
-                <Label htmlFor="city_zone">Ciudad / Zona *</Label>
-                <Input id="city_zone" name="city_zone" defaultValue={property.city_zone} required />
-              </div>
-              <div className="md:col-span-12">
-                <Label htmlFor="address">Dirección</Label>
-                <Input id="address" name="address" defaultValue={property.address ?? ""} />
-              </div>
               <div className="md:col-span-12">
                 <Label htmlFor="description">Descripción</Label>
                 <Textarea id="description" name="description" rows={3} defaultValue={property.description ?? ""} />
@@ -146,18 +183,68 @@ export function PropertyDetailEditForm({
           <div className={editTab === "ubicacion" ? "block" : "hidden"}>
             <div className="grid gap-4 md:grid-cols-12">
               <div className="md:col-span-12">
-                <Label htmlFor="geocodeQuery">Buscar dirección (geocodificar)</Label>
-                <Input id="geocodeQuery" name="geocodeQuery" placeholder="Dirección para buscar lat/lng" />
-                <p className="mt-1 text-xs text-[var(--muted)]">Se usará sólo si lat/lng están vacíos al guardar.</p>
+                <GeoCascadingSelect countryCode={DEFAULT_GEO_COUNTRY} value={property.geo_unit_id} emitCityZone cityZoneFallback={property.city_zone} />
+              </div>
+              <div className="md:col-span-8">
+                <Label htmlFor="address">Dirección</Label>
+                <Input id="address" name="address" defaultValue={property.address ?? ""} />
+              </div>
+              <div className="md:col-span-4">
+                <Label htmlFor="postal_code">Código postal</Label>
+                <Input id="postal_code" name="postal_code" defaultValue={property.postal_code ?? ""} />
               </div>
               <div className="md:col-span-6">
                 <Label htmlFor="lat">Latitud</Label>
-                <Input id="lat" name="lat" type="number" step="any" defaultValue={property.lat ?? ""} />
+                <Input
+                  id="lat"
+                  name="lat"
+                  type="number"
+                  step="any"
+                  defaultValue={property.lat ?? ""}
+                  onChange={(e) => {
+                    const lat = Number(e.target.value);
+                    const lngEl = document.getElementById("lng") as HTMLInputElement | null;
+                    const lng = lngEl ? Number(lngEl.value) : NaN;
+                    if (Number.isFinite(lat) && Number.isFinite(lng)) setDraftLatLng({ lat, lng });
+                  }}
+                />
               </div>
               <div className="md:col-span-6">
                 <Label htmlFor="lng">Longitud</Label>
-                <Input id="lng" name="lng" type="number" step="any" defaultValue={property.lng ?? ""} />
+                <Input
+                  id="lng"
+                  name="lng"
+                  type="number"
+                  step="any"
+                  defaultValue={property.lng ?? ""}
+                  onChange={(e) => {
+                    const lng = Number(e.target.value);
+                    const latEl = document.getElementById("lat") as HTMLInputElement | null;
+                    const lat = latEl ? Number(latEl.value) : NaN;
+                    if (Number.isFinite(lat) && Number.isFinite(lng)) setDraftLatLng({ lat, lng });
+                  }}
+                />
               </div>
+              <div className="flex flex-wrap gap-2 md:col-span-12">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void geolocateFromFields()}
+                >
+                  Geolocalizar
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowMap((v) => !v)}>
+                  {showMap ? "Ocultar mapa" : "Ver en mapa"}
+                </Button>
+              </div>
+              {showMap && mapPin ? (
+                <div className="md:col-span-12">
+                  <Suspense fallback={<p className="text-xs text-[var(--muted)]">Cargando mapa…</p>}>
+                    <PropertyMap pins={[mapPin]} className="h-[min(40vh,320px)]" />
+                  </Suspense>
+                </div>
+              ) : null}
             </div>
           </div>
 

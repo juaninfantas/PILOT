@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ExternalLink } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import type { ListingStatus } from "../../types/database";
 import { LISTING_STATUS_LABEL } from "../../lib/property-listing-status";
@@ -24,6 +25,12 @@ type Payload = {
     description: string | null;
     amenity_tags: string | null;
     is_exclusive: boolean;
+    /** Ruta «Etiqueta: valor › …» cuando el formato lo permite. */
+    geo_path?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+    /** Enlace externo a mapa (p. ej. Google) si el formato lo incluye y hay coordenadas. */
+    show_map_link?: boolean;
   };
   organization?: {
     display_name: string;
@@ -113,6 +120,11 @@ export function PublicPropertySharePage() {
     .filter(Boolean)
     .join(" · ");
 
+  const mapHref =
+    pr.lat != null && pr.lng != null
+      ? `https://www.google.com/maps?q=${encodeURIComponent(`${pr.lat},${pr.lng}`)}`
+      : null;
+
   const anySpec = anyCommercialSpecVisible(v);
 
   return (
@@ -145,6 +157,27 @@ export function PublicPropertySharePage() {
             <h2 className="text-2xl font-semibold leading-tight">{pr.title}</h2>
           ) : null}
           {locLine ? <p className="mt-2 text-[var(--muted)]">{locLine}</p> : null}
+          {v.show_geo_path && pr.geo_path?.trim() ? (
+            <p className="mt-2 text-sm text-[var(--muted)]">{pr.geo_path.trim()}</p>
+          ) : null}
+          {v.show_coordinates && pr.lat != null && pr.lng != null ? (
+            <p className="mt-2 font-mono text-sm tabular-nums text-[var(--muted)]">
+              {Number(pr.lat).toFixed(5)}, {Number(pr.lng).toFixed(5)}
+            </p>
+          ) : null}
+          {pr.show_map_link && mapHref ? (
+            <p className="mt-2">
+              <a
+                href={mapHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-[var(--jif-gold)] underline-offset-4 hover:underline"
+              >
+                Ver en mapa
+                <ExternalLink className="size-3.5 shrink-0 opacity-80" aria-hidden />
+              </a>
+            </p>
+          ) : null}
         </div>
 
         {v.show_price && pp && !anySpec ? (

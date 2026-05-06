@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import type { ListingStatus } from "../types/database";
 import { LISTING_STATUS_LABEL } from "./property-listing-status";
 import { PROPERTY_KIND_LABEL } from "./property-options";
+import { supabase } from "./supabase";
 import type { PropertyShareVisibility } from "./property-share-visibility";
 import { anyCommercialSpecVisible, FULL_SHARE_VISIBILITY } from "./property-share-visibility";
 
@@ -35,6 +36,11 @@ export type PublicPropertyPdfInput = {
     description: string | null;
     amenity_tags: string | null;
     is_exclusive: boolean;
+    geo_unit_id?: string | null;
+    /** Precalculado en cliente con `geo_unit_path_labeled` cuando aplica. */
+    geo_path_labeled?: string | null;
+    lat?: number | null;
+    lng?: number | null;
   };
   public_price: { amount: string; currency: string } | null;
   /** URLs públicas de fotos (cover primero). Máx. ~12 en el PDF. */
@@ -212,7 +218,35 @@ export async function generatePropertyBrochurePdfBlob(
   const loc = locParts.join(" · ");
   const locLines = doc.splitTextToSize(loc || "—", pageW - margin * 2);
   doc.text(locLines, margin, y);
-  y += locLines.length * 14 + 20;
+  y += locLines.length * 14 + 12;
+
+  let geoLabeled = pr.geo_path_labeled ?? null;
+  if (v.show_geo_path && !geoLabeled?.trim() && pr.geo_unit_id) {
+    const { data: g } = await supabase.rpc("geo_unit_path_labeled", { p_unit_id: pr.geo_unit_id, p_locale: "es" });
+    geoLabeled = typeof g === "string" ? g : null;
+  }
+  if (v.show_geo_path && geoLabeled?.trim()) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+    const gl = doc.splitTextToSize(geoLabeled.trim(), pageW - margin * 2);
+    doc.text(gl, margin, y);
+    y += gl.length * 13 + 8;
+  }
+  if (v.show_coordinates && pr.lat != null && pr.lng != null) {
+    doc.setFontSize(8);
+    doc.text(`Coordenadas: ${Number(pr.lat).toFixed(5)}, ${Number(pr.lng).toFixed(5)}`, margin, y);
+    y += 14;
+  }
+  if (v.show_external_map_link && pr.lat != null && pr.lng != null) {
+    const mapUrl = `https://www.google.com/maps?q=${encodeURIComponent(`${pr.lat},${pr.lng}`)}`;
+    doc.setTextColor(80, 100, 140);
+    const ul = doc.splitTextToSize(`Mapa: ${mapUrl}`, pageW - margin * 2);
+    doc.text(ul, margin, y);
+    y += ul.length * 11 + 10;
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+  }
+  y += 8;
 
   const priceStr =
     v.show_price && data.public_price

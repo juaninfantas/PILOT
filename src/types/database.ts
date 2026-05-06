@@ -119,14 +119,67 @@ export interface Database {
         };
         Update: Partial<Database["public"]["Tables"]["UserNote"]["Insert"]>;
       };
+      GeoCountryConfig: {
+        Row: {
+          country_code: string;
+          dial_metadata: Record<string, unknown>;
+          updated_at: string;
+        };
+        Insert: {
+          country_code: string;
+          dial_metadata?: Record<string, unknown>;
+        };
+        Update: Partial<Database["public"]["Tables"]["GeoCountryConfig"]["Insert"]>;
+      };
+      GeoLevelDef: {
+        Row: {
+          country_code: string;
+          level_index: number;
+          level_key: string;
+          labels: Record<string, unknown>;
+          optional_level: boolean;
+        };
+        Insert: {
+          country_code: string;
+          level_index: number;
+          level_key: string;
+          labels?: Record<string, unknown>;
+          optional_level?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["GeoLevelDef"]["Insert"]>;
+      };
+      GeoUnit: {
+        Row: {
+          id: string;
+          country_code: string;
+          parent_id: string | null;
+          level_index: number;
+          code: string;
+          name: string;
+          metadata: Record<string, unknown>;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          country_code: string;
+          parent_id?: string | null;
+          level_index: number;
+          code: string;
+          name: string;
+          metadata?: Record<string, unknown>;
+        };
+        Update: Partial<Database["public"]["Tables"]["GeoUnit"]["Insert"]>;
+      };
       Property: {
         Row: {
           id: string;
           title: string;
           city_zone: string;
           address: string | null;
+          postal_code: string | null;
           lat: number | null;
           lng: number | null;
+          geo_unit_id: string | null;
           kind: PropertyKind;
           covered_m2: number | null;
           total_m2: number | null;
@@ -150,8 +203,10 @@ export interface Database {
           title: string;
           city_zone: string;
           address?: string | null;
+          postal_code?: string | null;
           lat?: number | null;
           lng?: number | null;
+          geo_unit_id?: string | null;
           kind?: PropertyKind;
           listing_status?: ListingStatus;
           covered_m2?: number | null;
@@ -287,6 +342,9 @@ export interface Database {
           show_spec_amenities: boolean;
           show_description: boolean;
           show_photos: boolean;
+          show_geo_path: boolean;
+          show_coordinates: boolean;
+          show_external_map_link: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -315,6 +373,9 @@ export interface Database {
           show_spec_amenities?: boolean;
           show_description?: boolean;
           show_photos?: boolean;
+          show_geo_path?: boolean;
+          show_coordinates?: boolean;
+          show_external_map_link?: boolean;
         };
         Update: Partial<Database["public"]["Tables"]["PropertyShareFormat"]["Insert"]>;
       };
@@ -674,6 +735,18 @@ export interface Database {
       fetch_property_via_share_token: {
         Args: { p_token_text: string };
         Returns: Record<string, unknown>;
+      };
+      get_geo_country_root_id: { Args: { p_country: string }; Returns: string | null };
+      get_geo_unit_chain: { Args: { p_unit_id: string }; Returns: string[] };
+      geo_unit_path_labeled: { Args: { p_unit_id: string; p_locale?: string }; Returns: string | null };
+      geo_unit_path_line: { Args: { p_unit_id: string }; Returns: string | null };
+      list_geo_level_defs: {
+        Args: { p_country: string };
+        Returns: Database["public"]["Tables"]["GeoLevelDef"]["Row"][];
+      };
+      list_geo_units: {
+        Args: { p_country: string; p_parent_id: string | null };
+        Returns: Database["public"]["Tables"]["GeoUnit"]["Row"][];
       };
       staff_search_organizations: {
         Args: { p_query?: string; p_limit?: number };

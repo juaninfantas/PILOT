@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { geocodeAddress } from "../../lib/geocode";
@@ -15,6 +15,12 @@ import { useActiveOrganization } from "../../contexts/OrganizationContext";
 import { CurrencySelect } from "../../components/ui/currency-select";
 import { normalizeCurrencyCode } from "../../lib/currencies";
 import { MANAGEMENT_OPTIONS, managementCodesFromForm, serializeManagement } from "../../lib/property-management";
+import { GeoCascadingSelect } from "../../components/geo/GeoCascadingSelect";
+import type { MapPin } from "../../components/map/PropertyMap";
+
+const PropertyMap = lazy(() => import("../../components/map/PropertyMap").then((m) => ({ default: m.PropertyMap })));
+
+const DEFAULT_GEO_COUNTRY = "AR";
 
 const FORM_TABS = [
   { id: "general", label: "General" },
@@ -28,10 +34,56 @@ export function PropertyNewPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [tab, setTab] = useState("general");
+  const [showMap, setShowMap] = useState(false);
+  const [mapPreview, setMapPreview] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     void import("./PropertyDetailPage");
   }, []);
+
+  const mapPin: MapPin | null = useMemo(() => {
+    if (!mapPreview) return null;
+    return {
+      id: "new",
+      title: "Nueva propiedad",
+      city_zone: "",
+      lat: mapPreview.lat,
+      lng: mapPreview.lng,
+      priceLabel: "—",
+      kindLabel: "—",
+    };
+  }, [mapPreview]);
+
+  function readLatLngFromInputs(): { lat: number; lng: number } | null {
+    const la = (document.getElementById("lat") as HTMLInputElement | null)?.value;
+    const ln = (document.getElementById("lng") as HTMLInputElement | null)?.value;
+    const lat = la ? Number(la) : NaN;
+    const lng = ln ? Number(ln) : NaN;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  }
+
+  async function geolocateFromFields() {
+    const address = (document.getElementById("address") as HTMLInputElement | null)?.value?.trim() ?? "";
+    const postal = (document.getElementById("postal_code") as HTMLInputElement | null)?.value?.trim() ?? "";
+    const city = (document.getElementById("city_zone_hidden") as HTMLInputElement | null)?.value?.trim() ?? "";
+    const geoUnit = (document.getElementById("geo_unit_id_hidden") as HTMLInputElement | null)?.value?.trim() ?? "";
+    let geoLine = "";
+    if (geoUnit) {
+      const { data } = await supabase.rpc("geo_unit_path_line", { p_unit_id: geoUnit });
+      geoLine = typeof data === "string" ? data.trim() : "";
+    }
+    const q = [address, postal, city, geoLine].filter(Boolean).join(", ");
+    if (!q) return;
+    const g = await geocodeAddress(q);
+    if (!g) return;
+    const la = document.getElementById("lat") as HTMLInputElement | null;
+    const ln = document.getElementById("lng") as HTMLInputElement | null;
+    if (la) la.value = String(g.lat);
+    if (ln) ln.value = String(g.lng);
+    setMapPreview({ lat: g.lat, lng: g.lng });
+    setShowMap(true);
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -40,21 +92,31 @@ export function PropertyNewPage() {
     const title = String(fd.get("title") ?? "").trim();
     const city_zone = String(fd.get("city_zone") ?? "").trim();
     if (!title || !city_zone) {
-      setError("Título y ciudad/zona son obligatorios.");
+      setError("Título y localidad son obligatorios.");
       setTab("general");
       return;
     }
     const kind = String(fd.get("kind") ?? "OTHER") as PropertyKind;
     const listing_status = String(fd.get("listing_status") ?? "AVAILABLE") as ListingStatus;
     const address = String(fd.get("address") ?? "").trim() || null;
-    const geocodeQ = String(fd.get("geocodeQuery") ?? "").trim();
+    const postal_code = String(fd.get("postal_code") ?? "").trim() || null;
+    const geoRaw = String(fd.get("geo_unit_id") ?? "").trim();
     let lat = fd.get("lat") ? Number(fd.get("lat")) : null;
     let lng = fd.get("lng") ? Number(fd.get("lng")) : null;
-    if ((lat == null || Number.isNaN(lat) || lng == null || Number.isNaN(lng)) && geocodeQ) {
-      const g = await geocodeAddress(geocodeQ);
-      if (g) {
-        lat = g.lat;
-        lng = g.lng;
+    const geo_unit_id = geoRaw ? geoRaw : null;
+    if (lat == null || Number.isNaN(lat) || lng == null || Number.isNaN(lng)) {
+      let geoLine: string | null = null;
+      if (geo_unit_id) {
+        const { data } = await supabase.rpc("geo_unit_path_line", { p_unit_id: geo_unit_id });
+        geoLine = typeof data === "string" ? data : null;
+      }
+      const q = [address, postal_code, city_zone, geoLine].filter((x) => (x ?? "").trim()).join(", ");
+      if (q.trim()) {
+        const g = await geocodeAddress(q);
+        if (g) {
+          lat = g.lat;
+          lng = g.lng;
+        }
       }
     }
     const { data: u } = await supabase.auth.getUser();
@@ -68,6 +130,8 @@ export function PropertyNewPage() {
         title,
         city_zone,
         address,
+        postal_code,
+        geo_unit_id,
         kind,
         covered_m2: fd.get("covered_m2") ? Number(fd.get("covered_m2")) : null,
         total_m2: fd.get("total_m2") ? Number(fd.get("total_m2")) : null,
@@ -113,7 +177,7 @@ export function PropertyNewPage() {
       <div className="mx-auto max-w-2xl space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">Nueva propiedad</h1>
-          <p className="text-sm text-[var(--muted)]">Título y ciudad/zona obligatorios.</p>
+          <p className="text-sm text-[var(--muted)]">Título y localidad obligatorios.</p>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-5 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
@@ -157,14 +221,6 @@ export function PropertyNewPage() {
                 </select>
               </div>
               <div className="md:col-span-6">
-                <Label htmlFor="city_zone">Ciudad / Zona *</Label>
-                <Input id="city_zone" name="city_zone" required />
-              </div>
-              <div className="md:col-span-12">
-                <Label htmlFor="address">Dirección</Label>
-                <Input id="address" name="address" />
-              </div>
-              <div className="md:col-span-12">
                 <Label htmlFor="description">Descripción</Label>
                 <Textarea id="description" name="description" rows={3} />
               </div>
@@ -175,9 +231,15 @@ export function PropertyNewPage() {
           <div className={tab === "ubicacion" ? "block" : "hidden"}>
             <div className="grid gap-4 md:grid-cols-12">
               <div className="md:col-span-12">
-                <Label htmlFor="geocodeQuery">Buscar dirección (geocodificar)</Label>
-                <Input id="geocodeQuery" name="geocodeQuery" placeholder="Ej: Av. Corrientes 1000, CABA" />
-                <p className="mt-1 text-xs text-[var(--muted)]">Si dejás lat/lng vacíos, se geocodificará automáticamente al guardar.</p>
+                <GeoCascadingSelect countryCode={DEFAULT_GEO_COUNTRY} value={null} emitCityZone />
+              </div>
+              <div className="md:col-span-8">
+                <Label htmlFor="address">Dirección</Label>
+                <Input id="address" name="address" />
+              </div>
+              <div className="md:col-span-4">
+                <Label htmlFor="postal_code">Código postal</Label>
+                <Input id="postal_code" name="postal_code" />
               </div>
               <div className="md:col-span-6">
                 <Label htmlFor="lat">Latitud</Label>
@@ -187,6 +249,41 @@ export function PropertyNewPage() {
                 <Label htmlFor="lng">Longitud</Label>
                 <Input id="lng" name="lng" type="number" step="any" placeholder="-58.381592" />
               </div>
+              <div className="flex flex-wrap gap-2 md:col-span-12">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void geolocateFromFields()}
+                >
+                  Geolocalizar
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (showMap) {
+                      setShowMap(false);
+                      return;
+                    }
+                    const p = readLatLngFromInputs();
+                    if (p) {
+                      setMapPreview(p);
+                      setShowMap(true);
+                    }
+                  }}
+                >
+                  {showMap ? "Ocultar mapa" : "Ver en mapa"}
+                </Button>
+              </div>
+              {showMap && mapPin ? (
+                <div className="md:col-span-12">
+                  <Suspense fallback={<p className="text-xs text-[var(--muted)]">Cargando mapa…</p>}>
+                    <PropertyMap pins={[mapPin]} className="h-[min(40vh,320px)]" />
+                  </Suspense>
+                </div>
+              ) : null}
             </div>
           </div>
 

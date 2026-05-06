@@ -115,6 +115,7 @@ export function PropertyDetailPage() {
   const [docUploadBusy, setDocUploadBusy] = useState(false);
   const [zipBusy, setZipBusy] = useState<"photos" | "docs" | null>(null);
   const [mainSaving, setMainSaving] = useState(false);
+  const [geoPathLabeled, setGeoPathLabeled] = useState<string | null>(null);
   const [priceSaving, setPriceSaving] = useState(false);
   const [appraisalSaving, setAppraisalSaving] = useState(false);
   /** Remount del formulario tras guardar para alinear defaultValues con el servidor. */
@@ -280,6 +281,25 @@ export function PropertyDetailPage() {
     }
   }, [appraisalModalOpen, editingAppraisal?.id]);
 
+  useEffect(() => {
+    if (!property?.geo_unit_id) {
+      setGeoPathLabeled(null);
+      return;
+    }
+    let cancelled = false;
+    void supabase.rpc("geo_unit_path_labeled", { p_unit_id: property.geo_unit_id, p_locale: "es" }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        setGeoPathLabeled(null);
+        return;
+      }
+      setGeoPathLabeled(typeof data === "string" ? data : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [property?.geo_unit_id]);
+
   async function onUpdate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!id || !property || mainSaving) return;
@@ -287,19 +307,30 @@ export function PropertyDetailPage() {
     const title = String(fd.get("title") ?? "").trim();
     const city_zone = String(fd.get("city_zone") ?? "").trim();
     if (!title || !city_zone) {
-      setError("Título y ciudad/zona obligatorios");
+      setError("Título y localidad obligatorios");
       return;
     }
     const kind = String(fd.get("kind") ?? "OTHER") as PropertyKind;
     const listing_status = String(fd.get("listing_status") ?? "AVAILABLE") as ListingStatus;
-    const geocodeQ = String(fd.get("geocodeQuery") ?? "").trim();
     let lat = fd.get("lat") ? Number(fd.get("lat")) : null;
     let lng = fd.get("lng") ? Number(fd.get("lng")) : null;
-    if ((lat == null || Number.isNaN(lat) || lng == null || Number.isNaN(lng)) && geocodeQ) {
-      const g = await geocodeAddress(geocodeQ);
-      if (g) {
-        lat = g.lat;
-        lng = g.lng;
+    const address = String(fd.get("address") ?? "").trim() || null;
+    const postal_code = String(fd.get("postal_code") ?? "").trim() || null;
+    const geoRaw = String(fd.get("geo_unit_id") ?? "").trim();
+    const geo_unit_id = geoRaw ? geoRaw : null;
+    if (lat == null || Number.isNaN(lat) || lng == null || Number.isNaN(lng)) {
+      let geoLine: string | null = null;
+      if (geo_unit_id) {
+        const { data } = await supabase.rpc("geo_unit_path_line", { p_unit_id: geo_unit_id });
+        geoLine = typeof data === "string" ? data : null;
+      }
+      const q = [address, postal_code, city_zone, geoLine].filter((x) => (x ?? "").trim()).join(", ");
+      if (q.trim()) {
+        const g = await geocodeAddress(q);
+        if (g) {
+          lat = g.lat;
+          lng = g.lng;
+        }
       }
     }
     setMainSaving(true);
@@ -308,7 +339,9 @@ export function PropertyDetailPage() {
       .update({
         title,
         city_zone,
-        address: String(fd.get("address") ?? "").trim() || null,
+        address,
+        postal_code,
+        geo_unit_id,
         kind,
         covered_m2: fd.get("covered_m2") ? Number(fd.get("covered_m2")) : null,
         total_m2: fd.get("total_m2") ? Number(fd.get("total_m2")) : null,
@@ -600,11 +633,15 @@ export function PropertyDetailPage() {
         description: property.description,
         amenity_tags: property.amenity_tags,
         is_exclusive: property.is_exclusive,
+        geo_unit_id: property.geo_unit_id,
+        lat: property.lat,
+        lng: property.lng,
+        geo_path_labeled: geoPathLabeled,
       },
       public_price: best ? { amount: String(best.amount), currency: best.currency } : null,
       photo_urls,
     };
-  }, [property, fallbackOrg, prices, id, files]);
+  }, [property, fallbackOrg, prices, id, files, geoPathLabeled]);
 
   if (!id) return null;
 

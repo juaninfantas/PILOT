@@ -11,14 +11,22 @@ import { OrganizationBrandSection } from "./OrganizationBrandSection";
 import { AdminConfigurationSection } from "./AdminConfigurationSection";
 import { AdminMyPilotSection } from "./AdminMyPilotSection";
 import { AdminTenantsSection } from "./AdminTenantsSection";
+import { GeoAreasAdminSection } from "./GeoAreasAdminSection";
 import { cn } from "../../lib/utils";
 
-type AdminTab = "general" | "configuracion" | "usuarios" | "mypilot" | "tenants";
+type AdminTab = "general" | "configuracion" | "usuarios" | "mypilot" | "tenants" | "geo";
 
 const ADMIN_PERMS = ["manage_users", "manage_groups", "manage_roles"] as const;
 
 function isTab(s: string | null): s is AdminTab {
-  return s === "general" || s === "mypilot" || s === "configuracion" || s === "usuarios" || s === "tenants";
+  return (
+    s === "general" ||
+    s === "mypilot" ||
+    s === "configuracion" ||
+    s === "usuarios" ||
+    s === "tenants" ||
+    s === "geo"
+  );
 }
 
 export function AdminSettingsPage() {
@@ -41,6 +49,9 @@ export function AdminSettingsPage() {
         return canPilotTenants ? "tenants" : "configuracion";
       }
       if (tabParam === "tenants" && !canPilotTenants) {
+        return showGeneral ? "general" : "configuracion";
+      }
+      if (tabParam === "geo" && !canPilotTenants) {
         return showGeneral ? "general" : "configuracion";
       }
       return tabParam;
@@ -69,6 +80,12 @@ export function AdminSettingsPage() {
   }, [tabParam, canPilotTenants, showGeneral, setSearchParams]);
 
   useEffect(() => {
+    if (tabParam === "geo" && !canPilotTenants) {
+      setSearchParams({ tab: showGeneral ? "general" : "configuracion" }, { replace: true });
+    }
+  }, [tabParam, canPilotTenants, showGeneral, setSearchParams]);
+
+  useEffect(() => {
     const id = window.location.hash.replace(/^#/, "");
     if (!id) return;
     window.requestAnimationFrame(() => {
@@ -79,6 +96,7 @@ export function AdminSettingsPage() {
   function selectTab(id: AdminTab) {
     if (id === "general" && !showGeneral) return;
     if (id === "tenants" && !canPilotTenants) return;
+    if (id === "geo" && !canPilotTenants) return;
     if (id === "usuarios" && !hasAny(permissions ?? [], ["manage_users", "manage_groups", "manage_roles"])) return;
     setSearchParams({ tab: id }, { replace: true });
   }
@@ -120,6 +138,7 @@ export function AdminSettingsPage() {
         {showUsersTab ? tabBtn("usuarios", "Usuarios") : null}
         {tabBtn("mypilot", "MyPilot")}
         {canPilotTenants ? tabBtn("tenants", "Tenants") : null}
+        {canPilotTenants ? tabBtn("geo", "Áreas geo") : null}
       </nav>
 
       <div className="min-w-0 flex-1 space-y-10">
@@ -155,6 +174,8 @@ export function AdminSettingsPage() {
         {activeTab === "mypilot" ? <AdminMyPilotSection /> : null}
 
         {activeTab === "tenants" && canPilotTenants ? <AdminTenantsSection /> : null}
+
+        {activeTab === "geo" && canPilotTenants ? <GeoAreasAdminSection /> : null}
       </div>
     </div>
   );
