@@ -1,7 +1,7 @@
 import "leaflet/dist/leaflet.css";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { cn } from "../../lib/utils";
 
@@ -17,7 +17,23 @@ export type MapPin = {
 
 type PropertyMapProps = { pins: MapPin[]; className?: string };
 
-export function PropertyMap({ pins, className }: PropertyMapProps) {
+type InteractiveLocation = { lat: number; lng: number };
+
+type PropertyMapInteractiveProps = PropertyMapProps & {
+  onPickLocation?: (loc: InteractiveLocation) => void;
+  draggableSinglePin?: boolean;
+};
+
+function MapClickHandler({ onPickLocation }: { onPickLocation?: (loc: InteractiveLocation) => void }) {
+  useMapEvents({
+    click(e) {
+      onPickLocation?.({ lat: e.latlng.lat, lng: e.latlng.lng });
+    },
+  });
+  return null;
+}
+
+export function PropertyMap({ pins, className, onPickLocation, draggableSinglePin = false }: PropertyMapInteractiveProps) {
   const [activePinId, setActivePinId] = useState<string | null>(null);
   const activePin = useMemo(() => pins.find((p) => p.id === activePinId) ?? null, [activePinId, pins]);
   const markerIcon = useMemo(
@@ -44,9 +60,23 @@ export function PropertyMap({ pins, className }: PropertyMapProps) {
       center={center}
       zoom={pins.length > 1 ? 11 : 12}
     >
+      <MapClickHandler onPickLocation={onPickLocation} />
       <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       {pins.map((p) => (
-        <Marker key={p.id} position={{ lat: p.lat, lng: p.lng }} icon={markerIcon} eventHandlers={{ click: () => setActivePinId(p.id) }} />
+        <Marker
+          key={p.id}
+          position={{ lat: p.lat, lng: p.lng }}
+          icon={markerIcon}
+          draggable={draggableSinglePin && pins.length === 1}
+          eventHandlers={{
+            click: () => setActivePinId(p.id),
+            dragend: (e) => {
+              if (!draggableSinglePin || pins.length !== 1 || !onPickLocation) return;
+              const ll = (e.target as L.Marker).getLatLng();
+              onPickLocation({ lat: ll.lat, lng: ll.lng });
+            },
+          }}
+        />
       ))}
       {activePin ? (
         <Popup position={{ lat: activePin.lat, lng: activePin.lng }} eventHandlers={{ remove: () => setActivePinId(null) }}>

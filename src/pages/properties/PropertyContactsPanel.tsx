@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { hasPermission } from "../../lib/permissions";
 import { useAuth } from "../../contexts/AuthContext";
+import { useActiveOrganization } from "../../contexts/OrganizationContext";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { Modal } from "../../components/ui/modal";
+import { Tabs } from "../../components/ui/tabs";
 import type { Database } from "../../types/database";
 
 type ContactRow = Database["public"]["Tables"]["PropertyPersonContact"]["Row"];
@@ -18,6 +20,11 @@ type LoadedRow = ContactRow & Pick<PersonRow, "name" | "email" | "phone">;
 
 /** Un solo perfil por contacto en alta/edición en propiedad (excluyente). */
 type PropertyContactModalRole = "owner" | "family" | "guardian" | "broker";
+
+const CONTACT_CREATE_TABS = [
+  { id: "new", label: "Registrar nueva" },
+  { id: "existing", label: "Persona existente" },
+];
 
 function contactRoleFromRow(
   row: Pick<ContactRow, "is_owner" | "is_family" | "is_guardian" | "is_broker">,
@@ -32,8 +39,18 @@ function contactRoleFromRow(
   return null;
 }
 
+function escapeIlikeWildcards(s: string) {
+  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+function mapContactRpcError(raw: string): string {
+  if (raw.includes("already_linked")) return "Esa persona ya está vinculada a esta propiedad.";
+  return raw;
+}
+
 export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
   const { permissions } = useAuth();
+  const org = useActiveOrganization();
   const canManage = hasPermission(permissions, "manage_properties");
   const [rows, setRows] = useState<LoadedRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +59,20 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
   const [modalMode, setModalMode] = useState<"new" | "edit">("new");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  /** Solo en alta: registrar persona nueva vs elegir del maestro. */
+  const [contactCreateTab, setContactCreateTab] = useState<"new" | "existing">("new");
+
+  const [existingSearchQuery, setExistingSearchQuery] = useState("");
+  const [existingSearching, setExistingSearching] = useState(false);
+  const [existingResults, setExistingResults] = useState<{ id: string; name: string; email: string | null; phone: string | null }[]>([]);
+  const [existingSearchMsg, setExistingSearchMsg] = useState<string | null>(null);
+  const [selectedExistingPerson, setSelectedExistingPerson] = useState<{
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+  } | null>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -100,9 +131,18 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
     void load();
   }, [load]);
 
+  function resetExistingSearch() {
+    setExistingSearchQuery("");
+    setExistingResults([]);
+    setExistingSearchMsg(null);
+    setSelectedExistingPerson(null);
+  }
+
   function openNew() {
     setModalMode("new");
     setEditingId(null);
+    setContactCreateTab("new");
+    resetExistingSearch();
     setName("");
     setEmail("");
     setPhone("");
@@ -124,6 +164,7 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
     setContactRole(contactRoleFromRow(row));
     setRel(row.family_relation ?? "");
     setErr(null);
+    resetExistingSearch();
     void (async () => {
       const { data: pn } = await supabase
         .from("Person")
@@ -136,19 +177,59 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
     setModalOpen(true);
   }
 
-  async function submitModal() {
-    if (busy || !propertyId) return;
-    const n = name.trim();
-    if (!n) {
-      setErr("Nombre obligatorio.");
+  async function runExistingSearch() {
+    const q = existingSearchQuery.trim();
+    setExistingSearchMsg(null);
+    setExistingResults([]);
+    if (q.length < 2) {
+      setExistingSearchMsg("Escribí al menos 2 caracteres.");
       return;
     }
+    setExistingSearching(true);
+    const pattern = `%${escapeIlikeWildcards(q)}%`;
+    const [byName, byEmail] = await Promise.all([
+      supabase.from("Person").select("id,name,email,phone").eq("organization_id", org.id).ilike("name", pattern).order("name").limit(25),
+      supabase.from("Person").select("id,name,email,phone").eq("organization_id", org.id).ilike("email", pattern).order("name").limit(25),
+    ]);
+    setExistingSearching(false);
+    if (byName.error) {
+      setExistingSearchMsg(byName.error.message);
+      return;
+    }
+    if (byEmail.error) {
+      setExistingSearchMsg(byEmail.error.message);
+      return;
+    }
+    const merged = new Map<string, { id: string; name: string; email: string | null; phone: string | null }>();
+    for (const row of [...(byName.data ?? []), ...(byEmail.data ?? [])]) {
+      merged.set(row.id, row);
+    }
+    const list = [...merged.values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
+    setExistingResults(list);
+    if (!list.length) setExistingSearchMsg("No hay resultados en tu organización.");
+  }
+
+  async function submitModal() {
+    if (busy || !propertyId) return;
+
+    const isExistingCreate = modalMode === "new" && contactCreateTab === "existing";
+    const n = name.trim();
+
     if (!contactRole) {
       setErr("Elegí un perfil de contacto.");
       return;
     }
     if (contactRole === "family" && !rel.trim()) {
       setErr("Indicá la relación cuando la persona es familiar.");
+      return;
+    }
+
+    if (modalMode === "new" && !isExistingCreate && !n) {
+      setErr("Nombre obligatorio.");
+      return;
+    }
+    if (isExistingCreate && !selectedExistingPerson?.id) {
+      setErr("Buscá y seleccioná una persona del maestro.");
       return;
     }
 
@@ -160,7 +241,23 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
     setBusy(true);
     setErr(null);
 
-    if (modalMode === "new") {
+    if (modalMode === "new" && isExistingCreate) {
+      const { error } = await supabase.rpc("link_property_person_contact_existing", {
+        p_property_id: propertyId,
+        p_person_id: selectedExistingPerson!.id,
+        p_is_owner: own,
+        p_is_family: fam,
+        p_family_relation: fam ? rel.trim() : null,
+        p_is_guardian: tutor,
+        p_is_broker: broker,
+        p_company: broker ? company.trim() || null : null,
+      });
+      if (error) setErr(mapContactRpcError(error.message));
+      else {
+        setModalOpen(false);
+        void load();
+      }
+    } else if (modalMode === "new") {
       const { error } = await supabase.rpc("create_property_person_contact", {
         p_property_id: propertyId,
         p_name: n,
@@ -229,11 +326,11 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
     <div className="space-y-4 pt-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-[var(--muted)]">
-          Contactos cargados sólo desde esta pestaña aparecen aquí como roles de propiedad. En Personas pueden verse esos perfiles pero no modificarse desde allí.
+          Contactos cargados sólo desde esta pestaña aparecen aquí como roles de propiedad. Podés crear una persona nueva o vincular una que ya exista en el CRM.
         </p>
         {canManage ? (
           <Button type="button" className="jif-btn-primary" onClick={() => openNew()}>
-            Nueva persona
+            Agregar contacto
           </Button>
         ) : null}
       </div>
@@ -242,7 +339,7 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
       {loading ? (
         <p className="text-sm text-[var(--muted)]">Cargando…</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-[var(--muted)]">Sin contactos. Agregá una persona con Nueva persona.</p>
+        <p className="text-sm text-[var(--muted)]">Sin contactos. Usá «Agregar contacto» para registrar uno nuevo o enlazar uno del maestro.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
           <table className="w-full min-w-[640px] border-collapse text-sm">
@@ -263,28 +360,33 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
                   <td className="border-b border-[var(--border)] px-3 py-2 text-[var(--muted)]">{r.phone ?? "—"}</td>
                   <td className="border-b border-[var(--border)] px-3 py-2 text-[var(--muted)]">{roleSummary(r)}</td>
                   <td className="border-b border-[var(--border)] px-3 py-2 text-right">
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
                       <Link
                         to={`/dashboard/people/${r.person_id}`}
-                        className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline"
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-stone-900/5"
+                        title="Ver ficha de persona"
                       >
-                        Ficha <ExternalLink className="size-3.5" strokeWidth={1.75} />
+                        Ficha <ExternalLink className="size-3.5 shrink-0" strokeWidth={1.75} />
                       </Link>
                       {canManage ? (
                         <>
                           <button
                             type="button"
-                            className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] hover:underline"
+                            className="rounded-md p-2 text-[var(--accent)] hover:bg-stone-900/5"
+                            title="Editar contacto"
+                            aria-label="Editar contacto"
                             onClick={() => openEdit(r)}
                           >
-                            Editar
+                            <Pencil className="size-4" strokeWidth={1.75} />
                           </button>
                           <button
                             type="button"
-                            className="text-xs text-red-400 hover:underline"
+                            className="rounded-md p-2 text-red-700 hover:bg-red-50"
+                            title="Quitar de la propiedad"
+                            aria-label="Quitar contacto de la propiedad"
                             onClick={() => void removeLink(r.id)}
                           >
-                            Quitar
+                            <Trash2 className="size-4" strokeWidth={1.75} />
                           </button>
                         </>
                       ) : null}
@@ -303,35 +405,102 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
           setModalOpen(false);
           setErr(null);
         }}
-        title={modalMode === "new" ? "Nueva persona" : "Editar contacto"}
+        title={modalMode === "new" ? "Agregar contacto" : "Editar contacto"}
         panelClassName="max-w-xl"
       >
         <div className="space-y-4">
+          {modalMode === "new" ? (
+            <>
+              <Tabs tabs={[...CONTACT_CREATE_TABS]} active={contactCreateTab} onChange={(id) => setContactCreateTab(id as "new" | "existing")} />
+              {contactCreateTab === "existing" ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-[var(--muted)]">Buscá en el maestro de personas de la organización y asigná el rol en esta propiedad.</p>
+                  <Label htmlFor="ppc-existing-search">Nombre o email</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Input
+                      id="ppc-existing-search"
+                      value={existingSearchQuery}
+                      onChange={(ev) => setExistingSearchQuery(ev.target.value)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter") {
+                          ev.preventDefault();
+                          void runExistingSearch();
+                        }
+                      }}
+                      placeholder="Ej. Ana o correo@…"
+                      className="min-w-[10rem] flex-1"
+                    />
+                    <Button type="button" variant="secondary" disabled={existingSearching} onClick={() => void runExistingSearch()}>
+                      {existingSearching ? "Buscando…" : "Buscar"}
+                    </Button>
+                  </div>
+                  {existingSearchMsg ? <p className="text-xs text-amber-600 dark:text-amber-400">{existingSearchMsg}</p> : null}
+                  {existingResults.length > 0 ? (
+                    <ul className="max-h-48 overflow-y-auto divide-y divide-[var(--border)] rounded-lg border border-[var(--border)] text-sm">
+                      {existingResults.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedExistingPerson(p)}
+                            className={`flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition-colors ${
+                              selectedExistingPerson?.id === p.id ? "bg-[var(--accent)]/10" : "hover:bg-stone-900/5"
+                            }`}
+                          >
+                            <span className="font-medium text-[var(--foreground)]">{p.name}</span>
+                            <span className="text-xs text-[var(--muted)]">
+                              {[p.email, p.phone].filter(Boolean).join(" · ") || "Sin email ni teléfono"}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {selectedExistingPerson ? (
+                    <p className="rounded-md border border-[var(--border)] bg-[#fffcf7] px-3 py-2 text-xs text-[var(--foreground)]">
+                      Seleccionada: <strong>{selectedExistingPerson.name}</strong>
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <Label htmlFor="ppc-name">Nombre *</Label>
+                    <Input id="ppc-name" value={name} onChange={(e) => setName(e.target.value)} required className="mt-1" />
+                  </div>
+                  <div>
+                    <Label htmlFor="ppc-email">Email</Label>
+                    <Input
+                      id="ppc-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="ppc-phone">Teléfono</Label>
+                    <Input id="ppc-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1" />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <Label htmlFor="ppc-name">Nombre *</Label>
+                <Input id="ppc-name" value={name} onChange={(e) => setName(e.target.value)} required className="mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="ppc-email">Email</Label>
+                <Input id="ppc-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="ppc-phone">Teléfono</Label>
+                <Input id="ppc-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1" />
+              </div>
+            </div>
+          )}
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <Label htmlFor="ppc-name">Nombre *</Label>
-              <Input
-                id="ppc-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="ppc-email">Email</Label>
-              <Input
-                id="ppc-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="ppc-phone">Teléfono</Label>
-              <Input id="ppc-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1" />
-            </div>
             <div className="md:col-span-2">
               <Label>Perfil de contacto</Label>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -405,10 +574,17 @@ export function PropertyContactsPanel({ propertyId }: { propertyId: string }) {
                 </div>
               ) : null}
             </div>
-            <div className="md:col-span-2">
-              <Label htmlFor="ppc-notes">Notas</Label>
-              <Textarea id="ppc-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="mt-1" />
-            </div>
+            {modalMode === "new" && contactCreateTab === "new" ? (
+              <div className="md:col-span-2">
+                <Label htmlFor="ppc-notes">Notas</Label>
+                <Textarea id="ppc-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="mt-1" />
+              </div>
+            ) : modalMode === "edit" ? (
+              <div className="md:col-span-2">
+                <Label htmlFor="ppc-notes">Notas</Label>
+                <Textarea id="ppc-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="mt-1" />
+              </div>
+            ) : null}
           </div>
           {err ? <p className="text-sm text-red-400">{err}</p> : null}
           <div className="flex justify-end gap-2 border-t border-[var(--border)] pt-4">

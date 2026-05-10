@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { RequirePermission } from "../../components/RequirePermission";
 import { NeoCard } from "../../components/ui/neo-brutal";
 import { supabase } from "../../lib/supabase";
 import type { Database } from "../../types/database";
 import { opportunityStatusLabel } from "../../lib/crm-labels";
+import { MonthlyListingAvgLineChart } from "../../components/charts/MonthlyListingAvgLineChart";
 
 type OppStatus = Database["public"]["Tables"]["Opportunity"]["Row"]["status"];
 
@@ -19,7 +21,7 @@ function barPct(n: number, max: number) {
   return Math.min(100, Math.round((n / max) * 100));
 }
 
-export function ReportsOverviewPage() {
+export function ReportsOverviewPage({ embedded = false }: { embedded?: boolean }) {
   const [opps, setOpps] = useState<{ status: OppStatus }[]>([]);
   const [props, setProps] = useState<{ city_zone: string }[]>([]);
   const [prices, setPrices] = useState<Database["public"]["Tables"]["PropertyPrice"]["Row"][]>([]);
@@ -93,19 +95,37 @@ export function ReportsOverviewPage() {
       .map(([month, v]) => ({ month, avg: v.n > 0 ? v.sum / v.n : 0, n: v.n }))
       .slice(-10);
   }, [prices]);
-  const maxAvg = Math.max(...monthly.map((r) => r.avg), 1);
 
   return (
     <RequirePermission slug="view_reports">
-      <div className="jif-page space-y-8">
-        <header className="border-b border-[var(--jif-line)] pb-6">
-          <div>
-            <h1 className="jif-hero">Overview</h1>
-            <p className="jif-caps jif-dim mt-1">
-              Resumen de oportunidades por estado, stock, zonas con más propiedades y tendencia de precios de listado.
-            </p>
+      <div className={embedded ? "scroll-mt-10 space-y-6 border-t border-[var(--jif-line)] pt-10" : "jif-page space-y-8"}>
+        {embedded ? (
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 id="control-tower-overview" className="font-neo text-xl font-semibold text-[var(--foreground)]">
+                Overview
+              </h2>
+              <p className="mt-1 max-w-2xl text-xs text-[var(--muted)]">
+                Oportunidades, stock, zonas y precios de listado (resumen mensual).
+              </p>
+            </div>
+            <Link
+              to="/dashboard/reports/overview"
+              className="jif-caps shrink-0 text-[0.65rem] text-[var(--accent)] hover:underline"
+            >
+              Ver pantalla completa →
+            </Link>
           </div>
-        </header>
+        ) : (
+          <header className="border-b border-[var(--jif-line)] pb-6">
+            <div>
+              <h1 className="jif-hero">Overview</h1>
+              <p className="jif-caps jif-dim mt-1">
+                Resumen de oportunidades por estado, stock, zonas con más propiedades y tendencia de precios de listado.
+              </p>
+            </div>
+          </header>
+        )}
         <div className="grid gap-4 lg:grid-cols-2">
           <NeoCard className="flex flex-col items-center justify-center p-6">
             <div
@@ -184,25 +204,31 @@ export function ReportsOverviewPage() {
             </div>
           </NeoCard>
           <NeoCard className="p-5">
-            <p className="jif-caps jif-dim mb-2" style={{ fontSize: "0.6rem" }}>
-              Precio público (prom. mensual, últimos meses)
-            </p>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-[var(--jif-line)] pb-4">
+              <div>
+                <p className="jif-caps jif-dim" style={{ fontSize: "0.6rem" }}>
+                  Precio público (prom. mensual, últimos meses)
+                </p>
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  {embedded
+                    ? "En Control Tower tenés además el reporte geográfico debajo."
+                    : "Resumen sin filtro geo. Para filtros por maestro país / niveles…"}
+                </p>
+              </div>
+              {embedded ? null : (
+                <Link
+                  to="/dashboard/reports/price-geo"
+                  className="jif-caps shrink-0 rounded border border-[var(--jif-line)] bg-[var(--card)] px-3 py-2 text-[0.6rem] text-[var(--foreground)] transition-colors hover:border-[var(--jif-gold)] hover:text-[var(--jif-gold)]"
+                >
+                  Precios por geografía
+                </Link>
+              )}
+            </div>
             {monthly.length === 0 ? (
               <p className="jif-caps jif-dim text-sm">Sin precios de listado.</p>
             ) : (
-              <div className="flex h-36 items-end gap-0.5">
-                {monthly.map((row) => (
-                  <div key={row.month} className="group flex min-w-0 flex-1 flex-col items-center">
-                    <div
-                      className="w-full max-w-8 rounded-t bg-[var(--secondary)]/90 transition-opacity group-hover:opacity-100"
-                      style={{ height: `${barPct(row.avg, maxAvg)}%`, minHeight: row.avg > 0 ? 4 : 0 }}
-                      title={`${row.month} · ${Math.round(row.avg).toLocaleString()}`}
-                    />
-                    <span className="mt-1 w-full truncate text-center font-mono text-[0.5rem] text-[var(--muted)]">
-                      {row.month.slice(2)}
-                    </span>
-                  </div>
-                ))}
+              <div className="pb-2 pt-1">
+                <MonthlyListingAvgLineChart monthly={monthly} currency="USD" height={240} />
               </div>
             )}
           </NeoCard>

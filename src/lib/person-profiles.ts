@@ -20,6 +20,7 @@ const PROPERTY_SLUG_SET = new Set<string>(PERSON_PROFILE_PROPERTY_KINDS);
 /** Etiqueta legible para chips y tablas. */
 export function formatPersonProfileLabel(p: string) {
   if (!p) return p;
+  if (p === "referral" || p === "agente") return "Agente";
   if (PROPERTY_LABELS[p as PersonProfilePropertySlug]) {
     return PROPERTY_LABELS[p as PersonProfilePropertySlug];
   }
@@ -34,7 +35,7 @@ export const PERSON_PROFILE_OPTIONS = [
   "martillero",
   "tasador",
   "informador",
-  "referral",
+  "agente",
   "interesado",
 ] as const;
 

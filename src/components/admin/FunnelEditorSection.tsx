@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Loader2, Pencil, Save, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useActiveOrganization } from "../../contexts/OrganizationContext";
 import { useAuth } from "../../contexts/AuthContext";
@@ -290,30 +290,52 @@ export function FunnelEditorSection() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-xl font-semibold text-[var(--foreground)]">Funnels</h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          El orden de las etapas (arriba → abajo) es el mismo que las columnas del tablero (izquierda → derecha).
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="jif-caps jif-dim" style={{ fontSize: "0.65rem" }}>
+            Embudo de ventas
+          </p>
+          <h3 className="mt-2 text-lg font-semibold text-[var(--foreground)]">Funnels</h3>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
+            El orden de las etapas (arriba → abajo) es el mismo que las columnas del tablero (izquierda → derecha).
+          </p>
+        </div>
+        {mode === "idle" ? (
+          <Button
+            type="button"
+            className="jif-btn-primary"
+            onClick={() => {
+              setMode("new");
+              setMsg(null);
+            }}
+          >
+            Nuevo funnel
+          </Button>
+        ) : null}
       </div>
       {msg ? <p className="text-sm text-[var(--accent)]">{msg}</p> : null}
       {loading ? <p className="text-sm text-[var(--muted)]">Cargando…</p> : null}
 
       {mode === "idle" ? (
         <div className="space-y-4">
-          <Button type="button" variant="neo" onClick={() => { setMode("new"); setMsg(null); }}>
-            Nuevo funnel
-          </Button>
-          <ul className="divide-y divide-[var(--jif-line)] rounded-xl border border-[var(--jif-line)]">
+          <ul className="divide-y divide-[var(--jif-line)] rounded-xl border border-[var(--jif-line)] bg-[#fffcf7]">
             {operationalFunnels.length === 0 ? (
               <li className="px-4 py-6 text-sm text-[var(--muted)]">No hay funnels operativos. Creá uno para armar etapas.</li>
             ) : (
               operationalFunnels.map((f) => (
-                <li key={f.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                  <span className="font-medium">{f.name}</span>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => openEdit(f)}>
-                    Editar funnel
-                  </Button>
+                <li key={f.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                  <span className="min-w-0 flex-1 font-medium text-[var(--foreground)]">{f.name}</span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      className="rounded-md p-2 text-[var(--accent)] hover:bg-stone-900/5"
+                      title="Editar funnel"
+                      aria-label="Editar funnel"
+                      onClick={() => openEdit(f)}
+                    >
+                      <Pencil className="size-4" strokeWidth={1.75} />
+                    </button>
+                  </div>
                 </li>
               ))
             )}
@@ -372,8 +394,15 @@ export function FunnelEditorSection() {
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="neo" disabled={pending} onClick={() => void createFunnel()}>
-              {pending ? "Guardando…" : "Crear funnel"}
+            <Button
+              type="button"
+              className="jif-btn-primary inline-flex h-10 min-w-10 items-center justify-center px-3"
+              disabled={pending}
+              onClick={() => void createFunnel()}
+              aria-label="Crear funnel"
+              title="Crear funnel"
+            >
+              {pending ? <Loader2 className="size-5 shrink-0 animate-spin" /> : <Save className="size-5 shrink-0" />}
             </Button>
             <Button type="button" variant="ghost" onClick={() => { setMode("idle"); setMsg(null); }}>
               Cancelar
@@ -476,8 +505,15 @@ export function FunnelEditorSection() {
             </Button>
           </div>
           <div className="flex flex-wrap gap-2 border-t border-[var(--jif-line)] pt-4">
-            <Button type="button" variant="neo" disabled={pending} onClick={() => void saveEdit()}>
-              {pending ? "Guardando…" : "Guardar cambios"}
+            <Button
+              type="button"
+              className="jif-btn-primary inline-flex h-10 min-w-10 items-center justify-center px-3"
+              disabled={pending}
+              onClick={() => void saveEdit()}
+              aria-label="Guardar cambios"
+              title="Guardar cambios"
+            >
+              {pending ? <Loader2 className="size-5 shrink-0 animate-spin" /> : <Save className="size-5 shrink-0" />}
             </Button>
             <Button type="button" variant="ghost" onClick={() => { setMode("idle"); setEditFunnelId(null); setMsg(null); }}>
               Cerrar

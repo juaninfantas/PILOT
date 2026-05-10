@@ -9,6 +9,8 @@ export interface RecurrenceRule {
   byweekday?: number[];
   /** yyyy-mm-dd inclusive */
   until?: string | null;
+  /** Ocurrencias omitidas (mismo epoch ms que en instanceId `${id}::${ms}`). */
+  exclude_occurrence_starts_ms?: number[];
 }
 
 const MAX_OCCURRENCES = 400;
@@ -16,6 +18,14 @@ const MAX_OCCURRENCES = 400;
 function durationMs(baseStart: dayjs.Dayjs, baseEnd: dayjs.Dayjs): number {
   const d = baseEnd.diff(baseStart);
   return Math.max(60_000, d);
+}
+
+/** Si el ítem viene de una instancia expandida, devuelve el epoch ms del inicio (`id` = `{uuid}::{ms}`). */
+export function extractOccurrenceStartMsFromInstanceId(calendarItemId: string): number | null {
+  const sep = calendarItemId.indexOf("::");
+  if (sep === -1) return null;
+  const n = Number(calendarItemId.slice(sep + 2));
+  return Number.isFinite(n) ? n : null;
 }
 
 export function parseRecurrenceRule(raw: unknown): RecurrenceRule | null {
@@ -31,7 +41,14 @@ export function parseRecurrenceRule(raw: unknown): RecurrenceRule | null {
     if (byweekday.length === 0) byweekday = undefined;
   }
   const until = typeof o.until === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.until) ? o.until : null;
-  return { frequency: f, interval, byweekday, until };
+  let exclude_occurrence_starts_ms: number[] | undefined;
+  if (Array.isArray(o.exclude_occurrence_starts_ms)) {
+    const xs = o.exclude_occurrence_starts_ms.filter(
+      (x): x is number => typeof x === "number" && Number.isFinite(x),
+    );
+    if (xs.length > 0) exclude_occurrence_starts_ms = [...new Set(xs)];
+  }
+  return { frequency: f, interval, byweekday, until, exclude_occurrence_starts_ms };
 }
 
 export type ExpandedInstance = { instanceId: string; start: Date; end: Date };
@@ -61,10 +78,18 @@ export function expandCalendarEventInstances(
   const rs = dayjs(rangeStart).startOf("day");
   const re = dayjs(rangeEnd).endOf("day");
 
+  if (!rule) {
+    const occEnd = baseStart.add(dur, "millisecond");
+    if (occEnd.isBefore(rs) || baseStart.isAfter(re)) return [];
+    return [{ instanceId: row.id, start: baseStart.toDate(), end: occEnd.toDate() }];
+  }
+
+  const excludeSet = new Set(rule.exclude_occurrence_starts_ms ?? []);
   const pushIfInRange = (occStart: dayjs.Dayjs, out: ExpandedInstance[]) => {
-    const until = rule ? untilDayjs(rule) : null;
-    if (until && occStart.isAfter(until)) return;
+    const untilLim = untilDayjs(rule);
+    if (untilLim && occStart.isAfter(untilLim)) return;
     if (occStart.isBefore(baseStart)) return;
+    if (excludeSet.has(occStart.valueOf())) return;
     const occEnd = occStart.add(dur, "millisecond");
     if (occEnd.isBefore(rs) || occStart.isAfter(re)) return;
     out.push({
@@ -73,12 +98,6 @@ export function expandCalendarEventInstances(
       end: occEnd.toDate(),
     });
   };
-
-  if (!rule) {
-    const occEnd = baseStart.add(dur, "millisecond");
-    if (occEnd.isBefore(rs) || baseStart.isAfter(re)) return [];
-    return [{ instanceId: row.id, start: baseStart.toDate(), end: occEnd.toDate() }];
-  }
 
   const interval = Math.max(1, rule.interval ?? 1);
   const until = untilDayjs(rule);

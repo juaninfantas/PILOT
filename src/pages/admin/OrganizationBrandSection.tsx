@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Loader2, Save } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useOrganization } from "../../contexts/OrganizationContext";
 import { Button } from "../../components/ui/button";
@@ -88,15 +89,27 @@ export function OrganizationBrandSection() {
 
   return (
     <div id="organization" className="scroll-mt-6 space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold">Inmobiliaria</h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Identificador técnico (slug):{" "}
-          <span className="font-mono text-[var(--foreground)]">{organization.slug}</span>
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-semibold">Inmobiliaria</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Identificador técnico (slug):{" "}
+            <span className="font-mono text-[var(--foreground)]">{organization.slug}</span>
+          </p>
+        </div>
+        <Button
+          type="submit"
+          form="org-brand-form"
+          disabled={pending}
+          className="jif-btn-primary inline-flex h-10 min-w-10 shrink-0 items-center justify-center px-3"
+          aria-label="Guardar"
+          title="Guardar"
+        >
+          {pending ? <Loader2 className="size-5 shrink-0 animate-spin" /> : <Save className="size-5 shrink-0" />}
+        </Button>
       </div>
 
-      <form onSubmit={(e) => void onSave(e)} className="max-w-xl space-y-5">
+      <form id="org-brand-form" onSubmit={(e) => void onSave(e)} className="max-w-xl space-y-5">
         {msg ? <p className="text-sm text-[var(--accent)]">{msg}</p> : null}
 
         <div className="space-y-2">
@@ -181,9 +194,6 @@ export function OrganizationBrandSection() {
           </div>
         </div>
 
-        <Button type="submit" variant="neo" disabled={pending}>
-          {pending ? "Guardando…" : "Guardar"}
-        </Button>
       </form>
     </div>
   );

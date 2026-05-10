@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "geo:regenerate-ar-seed": "node scripts/generate-ar-georef-geo-seed.mjs",
+    "geo:regenerate-es-seed": "node scripts/generate-es-codeforspain-geo-seed.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",

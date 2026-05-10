@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { RequirePermission } from "../../components/RequirePermission";
 import { FunnelShapeChart, type FunnelShapeRow } from "../../components/charts/FunnelShapeChart";
 import { NeoPageHeader, NeoPageShell } from "../../components/ui/neo-brutal";
@@ -9,7 +10,7 @@ type Opp = Database["public"]["Tables"]["Opportunity"]["Row"];
 type Funnel = Database["public"]["Tables"]["Funnel"]["Row"];
 type Stage = Database["public"]["Tables"]["FunnelStage"]["Row"];
 
-export function ReportsPipelinePage() {
+export function ReportsPipelinePage({ embedded = false }: { embedded?: boolean }) {
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [opps, setOpps] = useState<Opp[]>([]);
@@ -68,11 +69,28 @@ export function ReportsPipelinePage() {
 
   return (
     <RequirePermission slug="view_reports">
-      <NeoPageShell>
-        <NeoPageHeader
-          title="Pipeline"
-          subtitle="Forma del embudo y reparto de oportunidades por etapa del funnel seleccionado."
-        />
+      <NeoPageShell className={embedded ? "scroll-mt-10 space-y-4 border-t border-[var(--jif-line)] pt-10" : undefined}>
+        {embedded ? (
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="font-neo text-xl font-semibold text-[var(--foreground)]">Pipeline</h2>
+              <p className="jif-caps jif-dim mt-2 max-w-2xl font-normal" style={{ fontSize: "0.65rem" }}>
+                Forma del embudo por etapa del funnel elegido.
+              </p>
+            </div>
+            <Link
+              to="/dashboard/reports/pipeline"
+              className="jif-caps shrink-0 text-[0.65rem] text-[var(--accent)] hover:underline"
+            >
+              Ver pantalla completa →
+            </Link>
+          </div>
+        ) : (
+          <NeoPageHeader
+            title="Pipeline"
+            subtitle="Forma del embudo y reparto de oportunidades por etapa del funnel seleccionado."
+          />
+        )}
         {loadError ? <p className="jif-caps mb-4 text-amber-400">Error: {loadError}</p> : null}
         {funnels.length === 0 && !loadError ? (
           <p className="jif-caps jif-dim mb-6 border border-[var(--jif-line)] p-4">No hay funnels operativos.</p>
@@ -96,7 +114,13 @@ export function ReportsPipelinePage() {
             </select>
           </div>
         ) : null}
-        <div className="rounded border border-[var(--jif-line)] bg-[var(--card)] p-6 shadow-[var(--neo-shadow-sm)]">
+        <div
+          className={
+            embedded
+              ? "max-h-[min(70vh,560px)] overflow-y-auto overscroll-contain rounded border border-[var(--jif-line)] bg-[var(--card)] p-6 shadow-[var(--neo-shadow-sm)]"
+              : "rounded border border-[var(--jif-line)] bg-[var(--card)] p-6 shadow-[var(--neo-shadow-sm)]"
+          }
+        >
           <FunnelShapeChart rows={shapeRows} />
         </div>
       </NeoPageShell>

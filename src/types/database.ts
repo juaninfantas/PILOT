@@ -186,6 +186,16 @@ export interface Database {
           rooms: number | null;
           bathrooms: number | null;
           parking: number | null;
+          has_quincho: boolean;
+          has_pool: boolean;
+          floor_count: number | null;
+          has_patio: boolean;
+          has_terrace: boolean;
+          has_laundry: boolean;
+          has_balcony: boolean;
+          has_garden: boolean;
+          has_service_room: boolean;
+          has_elevator: boolean;
           condition: string | null;
           description: string | null;
           is_exclusive: boolean;
@@ -214,6 +224,16 @@ export interface Database {
           rooms?: number | null;
           bathrooms?: number | null;
           parking?: number | null;
+          has_quincho?: boolean;
+          has_pool?: boolean;
+          floor_count?: number | null;
+          has_patio?: boolean;
+          has_terrace?: boolean;
+          has_laundry?: boolean;
+          has_balcony?: boolean;
+          has_garden?: boolean;
+          has_service_room?: boolean;
+          has_elevator?: boolean;
           condition?: string | null;
           description?: string | null;
           is_exclusive?: boolean;
@@ -340,6 +360,16 @@ export interface Database {
           show_spec_parking: boolean;
           show_spec_condition: boolean;
           show_spec_amenities: boolean;
+          show_spec_quincho: boolean;
+          show_spec_pool: boolean;
+          show_spec_floor_count: boolean;
+          show_spec_patio: boolean;
+          show_spec_terrace: boolean;
+          show_spec_laundry: boolean;
+          show_spec_balcony: boolean;
+          show_spec_garden: boolean;
+          show_spec_service_room: boolean;
+          show_spec_elevator: boolean;
           show_description: boolean;
           show_photos: boolean;
           show_geo_path: boolean;
@@ -371,6 +401,16 @@ export interface Database {
           show_spec_parking?: boolean;
           show_spec_condition?: boolean;
           show_spec_amenities?: boolean;
+          show_spec_quincho?: boolean;
+          show_spec_pool?: boolean;
+          show_spec_floor_count?: boolean;
+          show_spec_patio?: boolean;
+          show_spec_terrace?: boolean;
+          show_spec_laundry?: boolean;
+          show_spec_balcony?: boolean;
+          show_spec_garden?: boolean;
+          show_spec_service_room?: boolean;
+          show_spec_elevator?: boolean;
           show_description?: boolean;
           show_photos?: boolean;
           show_geo_path?: boolean;
@@ -390,6 +430,7 @@ export interface Database {
           address_line: string | null;
           tax_id: string | null;
           trade_name: string | null;
+          linked_user_id: string | null;
           created_at: string;
           updated_at: string;
           organization_id: string;
@@ -405,6 +446,7 @@ export interface Database {
           address_line?: string | null;
           tax_id?: string | null;
           trade_name?: string | null;
+          linked_user_id?: string | null;
         };
       };
       PersonProfile: {
@@ -416,6 +458,7 @@ export interface Database {
           person_id: string;
           zones_json: string | null;
           min_m2: number | null;
+          min_price: string | null;
           max_price: string | null;
           price_currency: string;
           property_kinds_json: string | null;
@@ -426,6 +469,7 @@ export interface Database {
           person_id: string;
           zones_json?: string | null;
           min_m2?: number | null;
+          min_price?: string | null;
           max_price?: string | null;
           price_currency?: string;
           property_kinds_json?: string | null;
@@ -566,6 +610,34 @@ export interface Database {
         };
         Update: Partial<Database["public"]["Tables"]["OpportunityActivity"]["Insert"]>;
       };
+      OpportunityFunnelHistory: {
+        Row: {
+          id: string;
+          opportunity_id: string;
+          from_funnel_id: string | null;
+          to_funnel_id: string | null;
+          from_stage_id: string | null;
+          to_stage_id: string | null;
+          from_status: OpportunityStatus;
+          to_status: OpportunityStatus;
+          reason: string | null;
+          changed_by_id: string | null;
+          changed_at: string;
+        };
+        Insert: {
+          id?: string;
+          opportunity_id: string;
+          from_funnel_id?: string | null;
+          to_funnel_id?: string | null;
+          from_stage_id?: string | null;
+          to_stage_id?: string | null;
+          from_status: OpportunityStatus;
+          to_status: OpportunityStatus;
+          reason?: string | null;
+          changed_by_id?: string | null;
+          changed_at?: string;
+        };
+      };
       CalendarEvent: {
         Row: {
           id: string;
@@ -597,6 +669,49 @@ export interface Database {
           location?: string | null;
           recurrence_rule?: unknown | null;
         };
+      };
+      CurrencyCatalog: {
+        Row: {
+          code: string;
+          name: string;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          code: string;
+          name: string;
+          sort_order?: number;
+        };
+        Update: Partial<{ name: string; sort_order: number }>;
+      };
+      ExchangeRate: {
+        Row: {
+          id: string;
+          organization_id: string;
+          currency_from: string;
+          currency_to: string;
+          effective_at: string;
+          quote_buy: string;
+          quote_sell: string;
+          /** BUY=compra, SELL=venta, MID=promedio */
+          use_variant: string;
+          source: string;
+          created_by_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          currency_from: string;
+          currency_to: string;
+          effective_at?: string;
+          quote_buy: number | string;
+          quote_sell: number | string;
+          use_variant?: string;
+          source?: string;
+          created_by_id?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["ExchangeRate"]["Insert"]>;
       };
       AuditLog: {
         Row: {
@@ -731,6 +846,19 @@ export interface Database {
         Returns: undefined;
       };
       delete_property_person_contact: { Args: { p_contact_id: string }; Returns: undefined };
+      link_property_person_contact_existing: {
+        Args: {
+          p_property_id: string;
+          p_person_id: string;
+          p_is_owner?: boolean;
+          p_is_family?: boolean;
+          p_family_relation?: string | null;
+          p_is_guardian?: boolean;
+          p_is_broker?: boolean;
+          p_company?: string | null;
+        };
+        Returns: string;
+      };
       sync_person_property_profiles: { Args: { p_person_id: string }; Returns: undefined };
       fetch_property_via_share_token: {
         Args: { p_token_text: string };
@@ -747,6 +875,10 @@ export interface Database {
       list_geo_units: {
         Args: { p_country: string; p_parent_id: string | null };
         Returns: Database["public"]["Tables"]["GeoUnit"]["Row"][];
+      };
+      mutate_currency_catalog: {
+        Args: { p_old_code: string; p_new_code: string; p_name: string };
+        Returns: undefined;
       };
       staff_search_organizations: {
         Args: { p_query?: string; p_limit?: number };

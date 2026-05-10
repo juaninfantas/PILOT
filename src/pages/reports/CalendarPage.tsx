@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Calendar,
   type Event as CalendarEventType,
@@ -23,6 +23,7 @@ import type { Database } from "../../types/database";
 import { activityTypeLabel } from "../../lib/crm-labels";
 import {
   expandCalendarEventInstances,
+  extractOccurrenceStartMsFromInstanceId,
   parseRecurrenceRule,
   type RecurrenceFrequency,
 } from "../../lib/calendar-recurrence";
@@ -201,7 +202,7 @@ function calendarInstanceBaseId(instanceId: string): string {
   return sep === -1 ? instanceId : instanceId.slice(0, sep);
 }
 
-export function CalendarPage() {
+export function CalendarPage({ embedded = false }: { embedded?: boolean }) {
   const org = useActiveOrganization();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -228,6 +229,9 @@ export function CalendarPage() {
   const [weeklyDays, setWeeklyDays] = useState<number[]>([dayjs().day()]);
   const [recurrenceUntil, setRecurrenceUntil] = useState("");
   const [eventSubmitting, setEventSubmitting] = useState(false);
+  const [eventDeleting, setEventDeleting] = useState(false);
+  /** Epoch ms del inicio de la instancia clickeada (solo series recurrentes expandidas). */
+  const [editingOccurrenceStartMs, setEditingOccurrenceStartMs] = useState<number | null>(null);
 
   const visibleRange = useMemo(() => {
     const d = dayjs(date);
@@ -259,7 +263,12 @@ export function CalendarPage() {
 
   const isDirty = currentSnapshot !== baselineSnapshotRef.current;
   const isEditMode = editingEventId !== null;
-  const saveDisabled = (isEditMode && !isDirty) || eventSubmitting;
+  const saveDisabled = (isEditMode && !isDirty) || eventSubmitting || eventDeleting;
+  const editingRow = useMemo(
+    () => (editingEventId ? events.find((e) => e.id === editingEventId) ?? null : null),
+    [events, editingEventId],
+  );
+  const editingHasRecurrence = Boolean(editingRow && parseRecurrenceRule(editingRow.recurrence_rule));
 
   async function load() {
     const [a, e] = await Promise.all([
@@ -311,20 +320,23 @@ export function CalendarPage() {
     baselineSnapshotRef.current = serializeSnapshot(snap);
     applySnapshot(snap);
     setEditingEventId(null);
+    setEditingOccurrenceStartMs(null);
     setEventModalError(null);
     setEventModalOpen(true);
   }
 
-  function openEditModal(row: EventRow) {
+  function openEditModal(row: EventRow, occurrenceStartMs: number | null) {
     const snap = eventRowToFields(row);
     baselineSnapshotRef.current = serializeSnapshot(snap);
     applySnapshot(snap);
     setEditingEventId(row.id);
+    setEditingOccurrenceStartMs(occurrenceStartMs);
     setEventModalError(null);
     setEventModalOpen(true);
   }
 
   function requestCloseModal() {
+    if (eventSubmitting || eventDeleting) return;
     if (currentSnapshot !== baselineSnapshotRef.current) {
       const ok = window.confirm(
         "¿Cerrar sin guardar? Los cambios que hiciste en este evento se perderán.",
@@ -333,6 +345,7 @@ export function CalendarPage() {
     }
     setEventModalOpen(false);
     setEditingEventId(null);
+    setEditingOccurrenceStartMs(null);
     setEventModalError(null);
   }
 
@@ -389,11 +402,21 @@ export function CalendarPage() {
       let recurrence_rule: Database["public"]["Tables"]["CalendarEvent"]["Insert"]["recurrence_rule"] = null;
       if (recurrence !== "NONE") {
         const until = recurrenceUntil.trim();
+        const prevRaw = editingEventId ? events.find((e) => e.id === editingEventId)?.recurrence_rule : null;
+        let preservedEx: number[] | undefined;
+        if (prevRaw && typeof prevRaw === "object" && prevRaw !== null && !Array.isArray(prevRaw)) {
+          const ex = (prevRaw as Record<string, unknown>).exclude_occurrence_starts_ms;
+          if (Array.isArray(ex)) {
+            const nums = ex.filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+            if (nums.length > 0) preservedEx = [...new Set(nums)];
+          }
+        }
         recurrence_rule = {
           frequency: recurrence,
           interval: 1,
           ...(until ? { until } : {}),
           ...(recurrence === "WEEKLY" ? { byweekday: [...weeklyDays].sort((a, b) => a - b) } : {}),
+          ...(preservedEx?.length ? { exclude_occurrence_starts_ms: preservedEx } : {}),
         };
       }
 
@@ -440,11 +463,106 @@ export function CalendarPage() {
 
       setEventModalOpen(false);
       setEditingEventId(null);
+      setEditingOccurrenceStartMs(null);
       setEventModalError(null);
       setMsg(wasEdit ? "Evento actualizado." : "Evento cargado.");
       void load();
     } finally {
       setEventSubmitting(false);
+    }
+  }
+
+  async function deleteThisOccurrenceOnly() {
+    if (!editingEventId || editingOccurrenceStartMs == null || !org?.id || eventDeleting || eventSubmitting) return;
+    const ok = window.confirm("¿Eliminar solo esta fecha? El resto de la serie se mantiene.");
+    if (!ok) return;
+    setEventModalError(null);
+    setEventDeleting(true);
+    try {
+      const prev = events.find((e) => e.id === editingEventId);
+      if (!prev) {
+        setEventModalError("No se encontró el evento.");
+        return;
+      }
+      const rule = parseRecurrenceRule(prev.recurrence_rule);
+      if (!rule) {
+        const { error: delErr } = await supabase
+          .from("CalendarEvent")
+          .delete()
+          .eq("id", editingEventId)
+          .eq("organization_id", org.id);
+        if (delErr) {
+          setEventModalError(delErr.message);
+          return;
+        }
+        setEventModalOpen(false);
+        setEditingEventId(null);
+        setEditingOccurrenceStartMs(null);
+        setMsg("Evento eliminado.");
+        void load();
+        return;
+      }
+      const raw = prev.recurrence_rule;
+      const base =
+        typeof raw === "object" && raw !== null && !Array.isArray(raw)
+          ? { ...(raw as Record<string, unknown>) }
+          : {
+              frequency: rule.frequency,
+              interval: rule.interval ?? 1,
+              ...(rule.until ? { until: rule.until } : {}),
+              ...(rule.byweekday?.length ? { byweekday: [...rule.byweekday] } : {}),
+            };
+      const merged = [...new Set([...(rule.exclude_occurrence_starts_ms ?? []), editingOccurrenceStartMs])];
+      (base as Record<string, unknown>).exclude_occurrence_starts_ms = merged;
+      const { error } = await supabase
+        .from("CalendarEvent")
+        .update({
+          recurrence_rule: base,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editingEventId)
+        .eq("organization_id", org.id);
+      if (error) {
+        setEventModalError(error.message);
+        return;
+      }
+      setEventModalOpen(false);
+      setEditingEventId(null);
+      setEditingOccurrenceStartMs(null);
+      setEventModalError(null);
+      setMsg("Esta ocurrencia fue eliminada.");
+      void load();
+    } finally {
+      setEventDeleting(false);
+    }
+  }
+
+  async function deleteEventSeries() {
+    if (!editingEventId || !org?.id || eventDeleting || eventSubmitting) return;
+    const isSeries = editingHasRecurrence;
+    const ok = window.confirm(
+      isSeries ? "¿Eliminar toda la serie de forma permanente?" : "¿Eliminar este evento de forma permanente?",
+    );
+    if (!ok) return;
+    setEventModalError(null);
+    setEventDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("CalendarEvent")
+        .delete()
+        .eq("id", editingEventId)
+        .eq("organization_id", org.id);
+      if (error) {
+        setEventModalError(error.message);
+        return;
+      }
+      setEventModalOpen(false);
+      setEditingEventId(null);
+      setEditingOccurrenceStartMs(null);
+      setMsg(isSeries ? "Serie eliminada." : "Evento eliminado.");
+      void load();
+    } finally {
+      setEventDeleting(false);
     }
   }
 
@@ -475,12 +593,33 @@ export function CalendarPage() {
 
   return (
     <RequirePermission slug="view_reports">
-      <div className="jif-page flex min-h-[calc(100dvh-8rem)] flex-col gap-4 pb-2 md:min-h-[calc(100dvh-7rem)]">
-        <header className="shrink-0 border-b border-[var(--jif-line)] pb-6">
+      <div
+        className={
+          embedded
+            ? "scroll-mt-10 space-y-4 border-t border-[var(--jif-line)] pb-2 pt-10"
+            : "jif-page flex min-h-[calc(100dvh-8rem)] flex-col gap-4 pb-2 md:min-h-[calc(100dvh-7rem)]"
+        }
+      >
+        <header className={embedded ? "shrink-0 border-b border-[var(--jif-line)] pb-4" : "shrink-0 border-b border-[var(--jif-line)] pb-6"}>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h1 className="jif-hero">Calendario</h1>
-              <p className="jif-caps jif-dim mt-1">Gestiona tu calendario</p>
+              {embedded ? (
+                <>
+                  <h2 className="font-neo text-xl font-semibold text-[var(--foreground)]">Calendario</h2>
+                  <p className="jif-caps jif-dim mt-1 text-[0.65rem]">Actividades y eventos organizacionales.</p>
+                  <Link
+                    to="/dashboard/reports/calendar"
+                    className="mt-2 inline-block jif-caps text-[0.6rem] text-[var(--accent)] hover:underline"
+                  >
+                    Ver pantalla completa →
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <h1 className="jif-hero">Calendario</h1>
+                  <p className="jif-caps jif-dim mt-1">Gestiona tu calendario</p>
+                </>
+              )}
             </div>
             <Button type="button" variant="neo" className="shrink-0" onClick={openCreateModal}>
               Nuevo evento
@@ -493,12 +632,22 @@ export function CalendarPage() {
           </p>
         ) : null}
 
-        <NeoCard className="flex min-h-0 flex-1 flex-col overflow-hidden border-[var(--jif-line)] p-0">
+        <NeoCard
+          className={
+            embedded
+              ? "flex max-h-[min(70vh,560px)] min-h-0 flex-col overflow-hidden border-[var(--jif-line)] p-0"
+              : "flex min-h-0 flex-1 flex-col overflow-hidden border-[var(--jif-line)] p-0"
+          }
+        >
           <div
             className="pilot-rbc--light min-h-0 flex-1 overflow-auto bg-[var(--card)] p-3"
-            style={{ minHeight: "min(70dvh, 520px)" }}
+            style={{ minHeight: embedded ? "min(45dvh, 400px)" : "min(70dvh, 520px)" }}
           >
-            <div className="h-[calc(100dvh-15rem)] min-h-[360px] md:h-[calc(100dvh-14rem)]">
+            <div
+              className={
+                embedded ? "min-h-[280px] h-[min(45dvh,420px)]" : "h-[calc(100dvh-15rem)] min-h-[360px] md:h-[calc(100dvh-14rem)]"
+              }
+            >
               <Calendar
                 localizer={localizer}
                 formats={CALENDAR_FORMATS}
@@ -541,7 +690,7 @@ export function CalendarPage() {
                   const baseId = calendarInstanceBaseId(event.id);
                   const row = events.find((e) => e.id === baseId);
                   if (!row) return;
-                  openEditModal(row);
+                  openEditModal(row, extractOccurrenceStartMsFromInstanceId(event.id));
                 }}
               />
             </div>
@@ -554,14 +703,64 @@ export function CalendarPage() {
           panelClassName="max-w-2xl"
           onClose={requestCloseModal}
           footer={
-            <>
-              <Button type="button" variant="ghost" onClick={requestCloseModal}>
-                Cancelar
-              </Button>
-              <Button type="button" variant="neo" disabled={saveDisabled} onClick={() => void submitEvent()}>
-                Guardar
-              </Button>
-            </>
+            <div
+              className={`flex w-full min-w-0 flex-wrap items-center gap-3 ${isEditMode ? "justify-between" : "justify-end"}`}
+            >
+              {isEditMode ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {editingHasRecurrence && editingOccurrenceStartMs != null ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={eventSubmitting || eventDeleting}
+                        onClick={() => void deleteThisOccurrenceOnly()}
+                      >
+                        {eventDeleting ? "Eliminando…" : "Solo esta vez"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        disabled={eventSubmitting || eventDeleting}
+                        onClick={() => void deleteEventSeries()}
+                      >
+                        {eventDeleting ? "Eliminando…" : "Toda la serie"}
+                      </Button>
+                    </>
+                  ) : editingHasRecurrence ? (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      disabled={eventSubmitting || eventDeleting}
+                      onClick={() => void deleteEventSeries()}
+                    >
+                      {eventDeleting ? "Eliminando…" : "Eliminar serie"}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      disabled={eventSubmitting || eventDeleting}
+                      onClick={() => void deleteEventSeries()}
+                    >
+                      {eventDeleting ? "Eliminando…" : "Eliminar"}
+                    </Button>
+                  )}
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="ghost" disabled={eventSubmitting || eventDeleting} onClick={requestCloseModal}>
+                  Cancelar
+                </Button>
+                <Button type="button" variant="neo" disabled={saveDisabled} onClick={() => void submitEvent()}>
+                  Guardar
+                </Button>
+              </div>
+            </div>
           }
         >
           <div className="space-y-5">

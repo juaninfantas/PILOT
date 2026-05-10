@@ -31,6 +31,16 @@ type Payload = {
     lng?: number | null;
     /** Enlace externo a mapa (p. ej. Google) si el formato lo incluye y hay coordenadas. */
     show_map_link?: boolean;
+    has_quincho?: boolean | null;
+    has_pool?: boolean | null;
+    floor_count?: number | null;
+    has_patio?: boolean | null;
+    has_terrace?: boolean | null;
+    has_laundry?: boolean | null;
+    has_balcony?: boolean | null;
+    has_garden?: boolean | null;
+    has_service_room?: boolean | null;
+    has_elevator?: boolean | null;
   };
   organization?: {
     display_name: string;
@@ -250,9 +260,69 @@ export function PublicPropertySharePage() {
                 <dd className="mt-1">{pr.condition}</dd>
               </div>
             ) : null}
+            {v.show_spec_quincho && pr.has_quincho != null ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Quincho</dt>
+                <dd className="mt-1">{pr.has_quincho ? "Sí" : "No"}</dd>
+              </div>
+            ) : null}
+            {v.show_spec_pool && pr.has_pool != null ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Pileta</dt>
+                <dd className="mt-1">{pr.has_pool ? "Sí" : "No"}</dd>
+              </div>
+            ) : null}
+            {v.show_spec_floor_count ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Plantas</dt>
+                <dd className="mt-1">{pr.floor_count != null ? pr.floor_count : "—"}</dd>
+              </div>
+            ) : null}
+            {v.show_spec_patio && pr.has_patio != null ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Patio</dt>
+                <dd className="mt-1">{pr.has_patio ? "Sí" : "No"}</dd>
+              </div>
+            ) : null}
+            {v.show_spec_terrace && pr.has_terrace != null ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Terraza</dt>
+                <dd className="mt-1">{pr.has_terrace ? "Sí" : "No"}</dd>
+              </div>
+            ) : null}
+            {v.show_spec_laundry && pr.has_laundry != null ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Lavadero independiente</dt>
+                <dd className="mt-1">{pr.has_laundry ? "Sí" : "No"}</dd>
+              </div>
+            ) : null}
+            {v.show_spec_balcony && pr.has_balcony != null ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Balcón</dt>
+                <dd className="mt-1">{pr.has_balcony ? "Sí" : "No"}</dd>
+              </div>
+            ) : null}
+            {v.show_spec_garden && pr.has_garden != null ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Jardín / parque</dt>
+                <dd className="mt-1">{pr.has_garden ? "Sí" : "No"}</dd>
+              </div>
+            ) : null}
+            {v.show_spec_service_room && pr.has_service_room != null ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Dependencia</dt>
+                <dd className="mt-1">{pr.has_service_room ? "Sí" : "No"}</dd>
+              </div>
+            ) : null}
+            {v.show_spec_elevator && pr.has_elevator != null ? (
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Ascensor</dt>
+                <dd className="mt-1">{pr.has_elevator ? "Sí" : "No"}</dd>
+              </div>
+            ) : null}
             {v.show_spec_amenities && pr.amenity_tags ? (
               <div className="sm:col-span-2">
-                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Características</dt>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Características (tags)</dt>
                 <dd className="mt-1 whitespace-pre-wrap">{pr.amenity_tags}</dd>
               </div>
             ) : null}

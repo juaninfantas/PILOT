@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Loader2, Save, Settings2, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -23,7 +24,9 @@ type MemberRow = {
   access_group_slug: string;
 };
 
-export function AdminTenantsSection() {
+type AdminTenantsSectionProps = { embedded?: boolean };
+
+export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionProps) {
   const { user, refreshPermissions } = useAuth();
   const { refresh: refreshOrg } = useOrganization();
   const [tenants, setTenants] = useState<TenantRow[]>([]);
@@ -198,7 +201,7 @@ export function AdminTenantsSection() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className={embedded ? "space-y-8" : "space-y-10"}>
       <Modal
         open={createModalOpen}
         title="Nueva inmobiliaria"
@@ -211,8 +214,15 @@ export function AdminTenantsSection() {
             <Button type="button" variant="ghost" disabled={busy} onClick={() => setCreateModalOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" form="create-tenant-form" disabled={busy} className="jif-btn-primary">
-              {busy ? "Creando…" : "Crear tenant"}
+            <Button
+              type="submit"
+              form="create-tenant-form"
+              disabled={busy}
+              className="jif-btn-primary inline-flex h-10 min-w-10 items-center justify-center px-3"
+              aria-label="Crear tenant"
+              title="Crear tenant"
+            >
+              {busy ? <Loader2 className="size-5 shrink-0 animate-spin" /> : <Save className="size-5 shrink-0" />}
             </Button>
           </>
         }
@@ -258,19 +268,48 @@ export function AdminTenantsSection() {
       </Modal>
 
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Inmobiliarias</h2>
-          <Button
-            type="button"
-            className="jif-btn-primary"
-            onClick={() => {
-              setMsg(null);
-              setCreateModalOpen(true);
-            }}
-          >
-            Crear tenant
-          </Button>
-        </div>
+        {embedded ? (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="jif-caps jif-dim" style={{ fontSize: "0.65rem" }}>
+                Tenant
+              </p>
+              <h3 className="mt-2 text-lg font-semibold">Inmobiliarias (Pilot)</h3>
+              <p className="mt-2 max-w-3xl text-sm text-[var(--muted)]">
+                Alta de inmobiliarias, códigos de invitación y usuarios por tenant. Sólo personal Pilot.
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="jif-btn-primary shrink-0"
+              onClick={() => {
+                setMsg(null);
+                setCreateModalOpen(true);
+              }}
+            >
+              Crear tenant
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="jif-caps jif-dim" style={{ fontSize: "0.65rem" }}>
+                Pilot
+              </p>
+              <h3 className="mt-2 text-lg font-semibold">Inmobiliarias</h3>
+            </div>
+            <Button
+              type="button"
+              className="jif-btn-primary shrink-0"
+              onClick={() => {
+                setMsg(null);
+                setCreateModalOpen(true);
+              }}
+            >
+              Crear tenant
+            </Button>
+          </div>
+        )}
         {lastCreated ? (
           <div className="rounded-lg border border-[var(--jif-gold)]/40 bg-[#fffcf7] p-4 text-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -297,11 +336,11 @@ export function AdminTenantsSection() {
           <table className="jif-table w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="jif-caps jif-dim border-b border-[var(--jif-line)]">
-                <th className="py-3 pl-4 font-medium sm:pl-5">Nombre</th>
-                <th className="py-3 font-medium">Slug</th>
-                <th className="py-3 font-medium">Plan</th>
-                <th className="py-3 font-medium">Usuarios</th>
-                <th className="w-28 py-3 text-right font-medium"> </th>
+                <th className="px-3 py-3 pl-4 font-medium sm:pl-5">Nombre</th>
+                <th className="px-3 py-3 font-medium">Slug</th>
+                <th className="px-3 py-3 font-medium">Plan</th>
+                <th className="px-3 py-3 font-medium">Usuarios</th>
+                <th scope="col" className="w-28 whitespace-nowrap px-3 py-3 pr-4 text-right font-medium sm:pr-5" aria-label="Acciones" />
               </tr>
             </thead>
             <tbody>
@@ -310,19 +349,27 @@ export function AdminTenantsSection() {
                   key={t.id}
                   className={`border-b border-[var(--jif-line)]/60 ${selectedId === t.id ? "bg-[var(--card)]" : ""}`}
                 >
-                  <td className="py-3 pl-4 sm:pl-5">{t.display_name}</td>
-                  <td className="py-3 font-mono text-xs text-[var(--muted)]">{t.slug}</td>
-                  <td className="py-3 text-[var(--muted)]">{t.subscription_tier}</td>
-                  <td className="py-3 text-[var(--muted)]">{t.member_count}</td>
-                  <td className="py-3 text-right">
-                    <Button
-                      type="button"
-                      variant={selectedId === t.id ? "neo" : "ghost"}
-                      size="sm"
-                      onClick={() => setSelectedId(selectedId === t.id ? null : t.id)}
-                    >
-                      {selectedId === t.id ? "Cerrar" : "Gestionar"}
-                    </Button>
+                  <td className="px-3 py-3 pl-4 sm:pl-5">{t.display_name}</td>
+                  <td className="px-3 py-3 font-mono text-xs text-[var(--muted)]">{t.slug}</td>
+                  <td className="px-3 py-3 text-[var(--muted)]">{t.subscription_tier}</td>
+                  <td className="px-3 py-3 text-[var(--muted)]">{t.member_count}</td>
+                  <td className="px-3 py-3 pr-4 text-right sm:pr-5">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        className={[
+                          "inline-flex rounded-md p-2 transition-colors",
+                          selectedId === t.id
+                            ? "bg-stone-900/10 text-[var(--foreground)]"
+                            : "text-[var(--accent)] hover:bg-stone-900/5",
+                        ].join(" ")}
+                        title={selectedId === t.id ? "Cerrar panel" : "Gestionar inmobiliaria"}
+                        aria-label={selectedId === t.id ? "Cerrar panel" : "Gestionar inmobiliaria"}
+                        onClick={() => setSelectedId(selectedId === t.id ? null : t.id)}
+                      >
+                        {selectedId === t.id ? <X className="size-4" strokeWidth={1.75} /> : <Settings2 className="size-4" strokeWidth={1.75} />}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -374,24 +421,24 @@ export function AdminTenantsSection() {
             <table className="jif-table w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="jif-caps jif-dim border-b border-[var(--jif-line)]">
-                  <th className="py-2 pl-2 font-medium">Email</th>
-                  <th className="py-2 font-medium">Nombre</th>
-                  <th className="py-2 font-medium">Acceso</th>
-                  <th className="py-2 font-medium">Estado</th>
-                  <th className="py-2 font-medium">Acciones</th>
+                  <th className="px-3 py-3 pl-4 font-medium sm:pl-5">Email</th>
+                  <th className="px-3 py-3 font-medium">Nombre</th>
+                  <th className="px-3 py-3 font-medium">Acceso</th>
+                  <th className="px-3 py-3 font-medium">Estado</th>
+                  <th className="px-3 py-3 pr-4 text-right font-medium sm:pr-5">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {members.map((m) => (
                   <tr key={m.user_id} className="border-b border-[var(--jif-line)]/60">
-                    <td className="py-2 pl-2">{m.email ?? "—"}</td>
-                    <td className="py-2">{m.name ?? "—"}</td>
-                    <td className="py-2">
+                    <td className="px-3 py-3 pl-4 sm:pl-5">{m.email ?? "—"}</td>
+                    <td className="px-3 py-3">{m.name ?? "—"}</td>
+                    <td className="px-3 py-3">
                       <span className="text-[var(--muted)]">{m.access_group_slug}</span>
                     </td>
-                    <td className="py-2">{m.is_active ? "Activo" : "Desactivado"}</td>
-                    <td className="py-2">
-                      <div className="flex flex-wrap gap-2">
+                    <td className="px-3 py-3">{m.is_active ? "Activo" : "Desactivado"}</td>
+                    <td className="px-3 py-3 pr-4 sm:pr-5">
+                      <div className="flex flex-wrap justify-end gap-2">
                         <Button
                           type="button"
                           variant="ghost"

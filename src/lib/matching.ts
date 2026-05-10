@@ -64,7 +64,16 @@ export function scorePropertyMatch(
   const kinds = preference ? parsePropertyKinds(preference.property_kinds_json) : [];
   const feat = preference ? parseStringArray(preference.feature_tags_json) : [];
   const minM2 = preference?.min_m2 ?? null;
-  const maxPrice = preference?.max_price != null ? Number(preference.max_price) : null;
+  const rawMin =
+    preference?.min_price != null && String(preference.min_price).trim() !== ""
+      ? Number(preference.min_price)
+      : null;
+  const rawMax =
+    preference?.max_price != null && String(preference.max_price).trim() !== ""
+      ? Number(preference.max_price)
+      : null;
+  const minPrice = rawMin != null && Number.isFinite(rawMin) ? rawMin : null;
+  const maxPrice = rawMax != null && Number.isFinite(rawMax) ? rawMax : null;
   const priceCurrency = preference?.price_currency ?? "USD";
 
   const buyerUnified = preference ? parseBuyerExtraJson(preference.buyer_extra_json) : { rows: [], legacy: null };
@@ -83,25 +92,37 @@ export function scorePropertyMatch(
   }
 
   let pricePts = 0;
-  let priceDetail = "Sin tope de precio en preferencias";
-  if (maxPrice != null && publicPrice != null) {
-    const max = maxPrice;
-    const pub = publicPrice;
-    if (!Number.isFinite(max) || !Number.isFinite(pub)) {
-      priceDetail = "Precio no comparable";
-    } else if (pub <= max) {
-      pricePts = 1;
-      priceDetail = `Precio público ${pub} ${priceCurrency} dentro del máximo ${max}`;
-    } else {
-      const ratio = max / pub;
-      pricePts = Math.max(0, ratio);
-      priceDetail = `Precio público ${pub} vs máximo ${max} (${Math.round(ratio * 100)}% del tope)`;
-    }
-  } else if (maxPrice == null) {
+  let priceDetail = "Sin rango de precio en preferencias";
+  const hasPriceBand =
+    (minPrice != null && Number.isFinite(minPrice)) || (maxPrice != null && Number.isFinite(maxPrice));
+
+  if (!hasPriceBand) {
     pricePts = 0;
-    priceDetail = "Sin máximo declarado (0 pts en precio)";
-  } else {
+    priceDetail = "Sin mínimo/máximo de precio (0 pts en precio)";
+  } else if (publicPrice == null || !Number.isFinite(publicPrice)) {
     priceDetail = "Propiedad sin precio público vigente";
+  } else {
+    const pub = publicPrice;
+    const belowMin = minPrice != null && pub < minPrice;
+    const aboveMax = maxPrice != null && pub > maxPrice;
+    const loLabel = minPrice != null ? String(minPrice) : "−∞";
+    const hiLabel = maxPrice != null ? String(maxPrice) : "∞";
+
+    if (!belowMin && !aboveMax) {
+      pricePts = 1;
+      priceDetail = `Precio público ${pub.toLocaleString()} ${priceCurrency} dentro del rango [${loLabel}, ${hiLabel}]`;
+    } else if (belowMin && minPrice != null && minPrice > 0) {
+      const ratio = pub / minPrice;
+      pricePts = Math.max(0, ratio);
+      priceDetail = `Precio ${pub.toLocaleString()} ${priceCurrency} por debajo del mínimo ${minPrice.toLocaleString()} (${Math.round(ratio * 100)}%)`;
+    } else if (aboveMax && maxPrice != null && maxPrice > 0) {
+      const ratio = maxPrice / pub;
+      pricePts = Math.max(0, ratio);
+      priceDetail = `Precio ${pub.toLocaleString()} ${priceCurrency} por encima del máximo ${maxPrice.toLocaleString()} (${Math.round(ratio * 100)}%)`;
+    } else {
+      pricePts = 0;
+      priceDetail = `Precio ${pub.toLocaleString()} fuera del rango declarado`;
+    }
   }
 
   const m2val = property.total_m2 ?? property.covered_m2 ?? null;

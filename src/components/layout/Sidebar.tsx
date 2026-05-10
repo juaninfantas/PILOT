@@ -22,7 +22,8 @@ type SidebarProps = {
 export function Sidebar({ permissions, platformStaff = false, mobileOpen = false, onCloseMobile }: SidebarProps) {
   const { signOut } = useAuth();
   const mdUp = useMdUp();
-  const canAdmin = hasAny(permissions, [...ADMIN_PERMS]) || platformStaff;
+  const canAdmin =
+    hasAny(permissions, [...ADMIN_PERMS]) || platformStaff || hasPermission(permissions, "manage_properties");
   const canDash = hasPermission(permissions, "view_dashboard");
   const canReports = hasPermission(permissions, "view_reports");
   const canOpp = hasPermission(permissions, "view_opportunities");
@@ -49,121 +50,109 @@ export function Sidebar({ permissions, platformStaff = false, mobileOpen = false
     <aside className={asideClass}>
       <div className="shrink-0">
         <Link to="/dashboard" className="block outline-offset-2 hover:opacity-90" onClick={closeIfMobile}>
-          <span className="font-pilot-logo block text-[3rem] leading-[0.88] text-[var(--foreground)] md:text-[3.85rem]">
+          <span className="font-pilot-logo block text-[2.85rem] leading-[0.88] text-[var(--foreground)] md:text-[5.25rem]">
             Pilot.
           </span>
         </Link>
       </div>
 
       <nav className="mt-8 min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain">
-        {mdUp ? (
+        {canDash ? (
+          <NavLink to="/dashboard" end className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+            Control Tower
+          </NavLink>
+        ) : null}
+
+        {canReports ? (
+          <NavLink to="/dashboard/reports/overview" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+            Overview
+          </NavLink>
+        ) : null}
+        {canReports ? (
+          <NavLink
+            to="/dashboard/reports/price-geo"
+            className={({ isActive }) => cn(navLinkClass(isActive), "jif-nav-item-sub")}
+            onClick={closeIfMobile}
+          >
+            Precios (geo)
+          </NavLink>
+        ) : null}
+
+        {canOpp ? (
+          <NavLink to="/dashboard/reports/funnels" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+            Funnels
+          </NavLink>
+        ) : null}
+
+        {canReports ? (
           <>
-            {canDash ? (
-              <NavLink to="/dashboard" end className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Control Tower
-              </NavLink>
-            ) : null}
-
-            {canReports ? (
-              <NavLink to="/dashboard/reports/overview" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Overview
-              </NavLink>
-            ) : null}
-
             {canOpp ? (
-              <NavLink to="/dashboard/reports/funnels" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Funnels
-              </NavLink>
-            ) : null}
-
-            {canReports ? (
               <>
-                {canOpp ? (
-                  <>
-                    <NavLink
-                      to="/dashboard/reports/pipeline"
-                      className={({ isActive }) => cn(navLinkClass(isActive), "jif-nav-item-sub")}
-                      onClick={closeIfMobile}
-                    >
-                      Pipeline
-                    </NavLink>
-                    <NavLink
-                      to="/dashboard/reports/final-states"
-                      className={({ isActive }) => cn(navLinkClass(isActive), "jif-nav-item-sub")}
-                      onClick={closeIfMobile}
-                    >
-                      Estados finales
-                    </NavLink>
-                  </>
-                ) : (
-                  <>
-                    <NavLink to="/dashboard/reports/pipeline" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                      Pipeline
-                    </NavLink>
-                    <NavLink to="/dashboard/reports/final-states" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                      Estados finales
-                    </NavLink>
-                  </>
-                )}
-                <NavLink to="/dashboard/reports/scoring" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                  Scoring
+                <NavLink
+                  to="/dashboard/reports/pipeline"
+                  className={({ isActive }) => cn(navLinkClass(isActive), "jif-nav-item-sub")}
+                  onClick={closeIfMobile}
+                >
+                  Pipeline
                 </NavLink>
-                <NavLink to="/dashboard/reports/calendar" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                  Calendario
+                <NavLink
+                  to="/dashboard/reports/final-states"
+                  className={({ isActive }) => cn(navLinkClass(isActive), "jif-nav-item-sub")}
+                  onClick={closeIfMobile}
+                >
+                  Estados finales
                 </NavLink>
               </>
-            ) : null}
-
-            {canReports && showCrmNav ? (
-              <div className="my-3 border-t border-[var(--jif-line)]" role="presentation" aria-hidden />
-            ) : null}
-
-            {hasPermission(permissions, "view_properties") ? (
-              <NavLink to="/dashboard/properties" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Propiedades
-              </NavLink>
-            ) : null}
-            {hasPermission(permissions, "view_people") ? (
-              <NavLink to="/dashboard/people" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Personas
-              </NavLink>
-            ) : null}
-            {hasPermission(permissions, "view_opportunities") ? (
-              <NavLink to="/dashboard/opportunities" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Oportunidades
-              </NavLink>
-            ) : null}
-            {hasPermission(permissions, "view_properties") ? (
-              <NavLink to="/dashboard/map" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Mapa
-              </NavLink>
-            ) : null}
-            {hasPermission(permissions, "view_dashboard") ? (
-              <NavLink to="/dashboard/notes" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Notas
-              </NavLink>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <p className="mb-2 px-1 text-[0.65rem] font-medium uppercase tracking-wide text-[var(--muted)]">Accesos rápidos</p>
-            {hasPermission(permissions, "view_properties") ? (
-              <NavLink to="/dashboard/properties" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Propiedades
-              </NavLink>
-            ) : null}
-            {canReports ? (
+            ) : (
+              <>
+                <NavLink to="/dashboard/reports/pipeline" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+                  Pipeline
+                </NavLink>
+                <NavLink to="/dashboard/reports/final-states" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+                  Estados finales
+                </NavLink>
+              </>
+            )}
+            <NavLink to="/dashboard/reports/scoring" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+              Scoring
+            </NavLink>
+            {mdUp ? (
               <NavLink to="/dashboard/reports/calendar" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
                 Calendario
               </NavLink>
             ) : null}
-            {hasPermission(permissions, "view_dashboard") ? (
-              <NavLink to="/dashboard/notes" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
-                Notas
-              </NavLink>
-            ) : null}
           </>
-        )}
+        ) : null}
+
+        {canReports && showCrmNav ? (
+          <div className="my-3 border-t border-[var(--jif-line)]" role="presentation" aria-hidden />
+        ) : null}
+
+        {hasPermission(permissions, "view_properties") && mdUp ? (
+          <NavLink to="/dashboard/properties" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+            Propiedades
+          </NavLink>
+        ) : null}
+        {hasPermission(permissions, "view_people") ? (
+          <NavLink to="/dashboard/people" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+            Personas
+          </NavLink>
+        ) : null}
+        {hasPermission(permissions, "view_opportunities") ? (
+          <NavLink to="/dashboard/opportunities" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+            Oportunidades
+          </NavLink>
+        ) : null}
+        {hasPermission(permissions, "view_properties") ? (
+          <NavLink to="/dashboard/map" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+            Mapa
+          </NavLink>
+        ) : null}
+        {hasPermission(permissions, "view_dashboard") && mdUp ? (
+          <NavLink to="/dashboard/notes" className={({ isActive }) => navLinkClass(isActive)} onClick={closeIfMobile}>
+            Notas
+          </NavLink>
+        ) : null}
       </nav>
 
       <div className="mt-auto shrink-0 border-t border-[var(--jif-line)] pt-3">

@@ -27,17 +27,42 @@ type Props = {
 export function FunnelShapeChart({ rows }: Props) {
   const n = Math.max(rows.length, 1);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const active = useMemo(() => {
+
+  const globalRow = useMemo((): FunnelShapeRow | null => {
     if (rows.length === 0) return null;
-    return rows.find((r) => r.id === hoveredId) ?? rows[0] ?? null;
+    let count = 0;
+    let budgeted = 0;
+    let notBudgeted = 0;
+    for (const r of rows) {
+      count += r.count;
+      budgeted += r.budgeted;
+      notBudgeted += r.notBudgeted;
+    }
+    return {
+      id: "__GLOBAL__",
+      label: "Todo el funnel",
+      count,
+      budgeted,
+      notBudgeted,
+      pct: 100,
+    };
+  }, [rows]);
+
+  const hoveredStage = useMemo(() => {
+    if (!hoveredId) return null;
+    return rows.find((r) => r.id === hoveredId) ?? null;
   }, [hoveredId, rows]);
 
-  if (rows.length === 0 || !active) {
+  const active = hoveredStage ?? globalRow;
+
+  if (rows.length === 0 || !active || !globalRow) {
     return <p className="jif-caps jif-dim text-center">Sin etapas en este funnel.</p>;
   }
 
+  const isGlobalDetail = hoveredId === null;
+
   return (
-    <div className="relative mx-auto w-full max-w-lg">
+    <div className="relative mx-auto w-full max-w-lg" onMouseLeave={() => setHoveredId(null)}>
       <div className="mb-2 flex justify-center" aria-hidden>
         <svg width="40" height="24" viewBox="0 0 40 24" className="text-[#1a2d4a]">
           <path d="M20 0 L30 12 L24 12 L24 24 L16 24 L16 12 L10 12 Z" fill="currentColor" />
@@ -74,11 +99,13 @@ export function FunnelShapeChart({ rows }: Props) {
         })}
       </div>
       <div className="mt-4 border border-[var(--jif-line)] bg-[var(--card)] p-3 shadow-[var(--neo-shadow-sm)]">
-        <p className="jif-caps jif-dim text-[0.55rem]">Etapa activa</p>
+        <p className="jif-caps jif-dim text-[0.55rem]">{isGlobalDetail ? "Vista general" : "Etapa · detalle"}</p>
         <div className="mt-1 flex items-end justify-between gap-3">
           <div>
             <p className="font-semibold text-[var(--foreground)]">{active.label}</p>
-            <p className="jif-caps jif-dim text-[0.55rem]">Participación {active.pct}% del funnel</p>
+            <p className="jif-caps jif-dim text-[0.55rem]">
+              {isGlobalDetail ? "Total de oportunidades del funnel seleccionado" : `Participación ${active.pct}% del funnel`}
+            </p>
           </div>
           <p className="font-mono text-2xl font-bold tabular-nums text-[var(--jif-gold)]">{active.count}</p>
         </div>

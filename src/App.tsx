@@ -59,6 +59,7 @@ const router = createBrowserRouter([
       { path: "notes", element: <Pages.NotesPage /> },
       { path: "reports", element: <Pages.ReportsPage /> },
       { path: "reports/overview", element: <Pages.ReportsOverviewPage /> },
+      { path: "reports/price-geo", element: <Pages.ReportsPriceGeoPage /> },
       { path: "reports/pipeline", element: <Pages.ReportsPipelinePage /> },
       { path: "reports/funnels", element: <Pages.FunnelsPage /> },
       {
@@ -76,7 +77,7 @@ const router = createBrowserRouter([
       { path: "admin/roles", element: <Navigate to="/dashboard/admin?tab=usuarios#roles" replace /> },
       { path: "admin/permissions", element: <Navigate to="/dashboard/admin?tab=usuarios#permissions" replace /> },
       { path: "admin/org", element: <Navigate to="/dashboard/admin?tab=general#organization" replace /> },
-      { path: "admin/tenants", element: <Navigate to="/dashboard/admin?tab=tenants" replace /> },
+      { path: "admin/tenants", element: <Navigate to="/dashboard/admin?tab=maestros#maestros-tenant" replace /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

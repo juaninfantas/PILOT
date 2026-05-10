@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Archive, ArchiveRestore, ChevronDown, Pencil, Trash2 } from "lucide-react";
 import { MatchScoreInfoButton } from "../../components/scoring/MatchScoreInfoButton";
 import { supabase } from "../../lib/supabase";
+import { useCurrencyCatalog } from "../../contexts/CurrencyCatalogContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { hasPermission } from "../../lib/permissions";
 import { recomputeMatchingForPerson } from "../../lib/recompute-matching";
@@ -25,7 +26,7 @@ import {
 } from "../../lib/crm-labels";
 import type { ActivityType, Database, OfferInOpportunityStatus, OppPropertyLinkStatus } from "../../types/database";
 import { Modal } from "../../components/ui/modal";
-import { CurrencySelect } from "../../components/ui/currency-select";
+import { PropertyAmountDateFormFields } from "../../components/property/PropertyAmountDateFormFields";
 import { normalizeCurrencyCode } from "../../lib/currencies";
 import { combineLocalDateTime, isoToDateAndTime, todayDateInputValue } from "../../lib/datetime-form";
 import { cn } from "../../lib/utils";
@@ -48,33 +49,9 @@ type PropertyPickerRow = {
   explain?: RankedProperty["explain"] | null;
 };
 
-function equilibriumRefs(series: { prices: PriceRow[]; appraisals: AppraisalRow[] } | undefined): {
-  strong: number | null;
-  weak: number | null;
-} {
-  if (!series) return { strong: null, weak: null };
-  const listings = series.prices
-    .filter((p) => p.kind === "LISTING_PUBLIC")
-    .sort((a, b) => new Date(a.effective_at).getTime() - new Date(b.effective_at).getTime());
-  const offers = series.prices
-    .filter((p) => p.kind === "OFFER_OPPORTUNITY")
-    .sort((a, b) => new Date(a.effective_at).getTime() - new Date(b.effective_at).getTime());
-  const appr = [...series.appraisals].sort(
-    (a, b) => new Date(a.appraised_at).getTime() - new Date(b.appraised_at).getTime(),
-  );
-  const lastL = listings.length ? Number(listings[listings.length - 1].amount) : NaN;
-  const lastO = offers.length ? Number(offers[offers.length - 1].amount) : NaN;
-  const lastA = appr.length ? Number(appr[appr.length - 1].amount) : NaN;
-  const strong =
-    Number.isFinite(lastL) && Number.isFinite(lastA) ? (lastL + lastA) / 2 : null;
-  let weak: number | null = null;
-  if (Number.isFinite(lastO) && Number.isFinite(lastA)) weak = (lastO + lastA) / 2;
-  else if (Number.isFinite(lastO) && Number.isFinite(lastL)) weak = (lastO + lastL) / 2;
-  return { strong, weak };
-}
-
 export function OpportunityDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { codeSet } = useCurrencyCatalog();
   const { permissions, user } = useAuth();
   const canEdit = hasPermission(permissions, "manage_opportunities");
   const [opp, setOpp] = useState<Opp | null>(null);
@@ -91,6 +68,8 @@ export function OpportunityDetailPage() {
   const [offers, setOffers] = useState<OfferRow[]>([]);
   const [activitySaving, setActivitySaving] = useState(false);
   const [offerSavingFor, setOfferSavingFor] = useState<string | null>(null);
+  /** Formulario «Registrar oferta» en modal (solo `property_id` activo). */
+  const [offerModalPropertyId, setOfferModalPropertyId] = useState<string | null>(null);
   const [seriesByProp, setSeriesByProp] = useState<
     Record<string, { prices: PriceRow[]; appraisals: AppraisalRow[] }>
   >({});
@@ -105,6 +84,29 @@ export function OpportunityDetailPage() {
   const [draftFunnelId, setDraftFunnelId] = useState<string>("");
   const [draftStageId, setDraftStageId] = useState<string>("");
   const [draftLostReason, setDraftLostReason] = useState<string>("");
+  const [funnelModalOpen, setFunnelModalOpen] = useState(false);
+
+  function syncFunnelDraftFromOpp(current: Opp) {
+    setDraftStatus(current.status);
+    setDraftFunnelId(current.funnel_id ?? "");
+    setDraftStageId(current.stage_id ?? "");
+    setDraftLostReason(current.lost_reason ?? "");
+  }
+
+  function closeFunnelModal() {
+    if (!opp) {
+      setFunnelModalOpen(false);
+      return;
+    }
+    const dirty =
+      draftStatus !== opp.status ||
+      draftFunnelId !== (opp.funnel_id ?? "") ||
+      draftStageId !== (opp.stage_id ?? "") ||
+      (draftLostReason ?? "") !== (opp.lost_reason ?? "");
+    if (dirty && !window.confirm("¿Cerrar sin guardar? Los cambios se descartarán.")) return;
+    syncFunnelDraftFromOpp(opp);
+    setFunnelModalOpen(false);
+  }
   const currentFunnel = useMemo(() => funnels.find((f) => f.id === opp?.funnel_id) ?? null, [funnels, opp?.funnel_id]);
   const currentStageList = useMemo(
     () => stages.filter((st) => st.funnel_id === opp?.funnel_id).sort((a, b) => a.position - b.position),
@@ -137,12 +139,12 @@ export function OpportunityDetailPage() {
   }, [offers]);
 
   useEffect(() => {
-    if (!opp) return;
+    if (!opp || funnelModalOpen) return;
     setDraftStatus(opp.status);
     setDraftFunnelId(opp.funnel_id ?? "");
     setDraftStageId(opp.stage_id ?? "");
     setDraftLostReason(opp.lost_reason ?? "");
-  }, [opp?.id, opp?.updated_at, opp?.status, opp?.funnel_id, opp?.stage_id, opp?.lost_reason]);
+  }, [opp, funnelModalOpen]);
 
   const stagesForDraftFunnel = useMemo(() => {
     if (!draftFunnelId) return [];
@@ -298,9 +300,34 @@ export function OpportunityDetailPage() {
     };
   }, [links]);
 
+  async function appendFunnelHistoryRow(
+    prev: Pick<Opp, "funnel_id" | "stage_id" | "status">,
+    next: { funnel_id: string | null; stage_id: string | null; status: Opp["status"] },
+    reason: string | null,
+  ) {
+    if (!id || !user?.id) return;
+    const sameFunnel = (prev.funnel_id ?? null) === next.funnel_id;
+    const sameStage = (prev.stage_id ?? null) === next.stage_id;
+    const sameStatus = prev.status === next.status;
+    if (sameFunnel && sameStage && sameStatus) return;
+    const { error: histErr } = await supabase.from("OpportunityFunnelHistory").insert({
+      opportunity_id: id,
+      from_funnel_id: prev.funnel_id,
+      to_funnel_id: next.funnel_id,
+      from_stage_id: prev.stage_id,
+      to_stage_id: next.stage_id,
+      from_status: prev.status,
+      to_status: next.status,
+      reason,
+      changed_by_id: user.id,
+    });
+    if (histErr) console.error("OpportunityFunnelHistory", histErr);
+  }
+
   async function saveStatus(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!id) return;
+    if (!id || !opp) return;
+    const prev = opp;
     const funnel_id = draftFunnelId.trim() || null;
     let stage_id = draftStageId.trim() || null;
     if (funnel_id && stage_id) {
@@ -314,7 +341,13 @@ export function OpportunityDetailPage() {
       .eq("id", id);
     if (error) setMsg(error.message);
     else {
+      await appendFunnelHistoryRow(
+        prev,
+        { funnel_id, stage_id, status: draftStatus },
+        draftStatus === "LOST" ? lost_reason : null,
+      );
       setMsg("Estado actualizado.");
+      setFunnelModalOpen(false);
       void load();
     }
   }
@@ -335,7 +368,8 @@ export function OpportunityDetailPage() {
   }
 
   async function closeOpportunity(status: "WON" | "LOST" | "ONHOLD") {
-    if (!id) return;
+    if (!id || !opp) return;
+    const prev = opp;
     const label =
       status === "WON" ? "ganada" : status === "LOST" ? "perdida" : OPPORTUNITY_STATUS_LABEL.ONHOLD.toLowerCase();
     const ok = window.confirm(`¿Seguro que querés marcar esta oportunidad como ${label}?`);
@@ -348,13 +382,17 @@ export function OpportunityDetailPage() {
       setMsg("No se encontró funnel de sistema para ese estado.");
       return;
     }
+    const funnel_id = systemFunnel.id;
+    const stage_id = systemStage.id;
     const { error } = await supabase
       .from("Opportunity")
-      .update({ status, funnel_id: systemFunnel.id, stage_id: systemStage.id })
+      .update({ status, funnel_id, stage_id })
       .eq("id", id);
     if (error) setMsg(error.message);
     else {
+      await appendFunnelHistoryRow(prev, { funnel_id, stage_id, status }, null);
       setMsg(`Oportunidad marcada como ${label}.`);
+      setFunnelModalOpen(false);
       void load();
     }
   }
@@ -530,7 +568,7 @@ export function OpportunityDetailPage() {
     const dateRaw = String(fd.get("offered_date") ?? "").trim();
     const date = dateRaw || todayDateInputValue();
     const offered_at = combineLocalDateTime(date, "12:00") ?? new Date().toISOString();
-    const currency = normalizeCurrencyCode(String(fd.get("currency") ?? "USD"));
+    const currency = normalizeCurrencyCode(String(fd.get("currency") ?? "USD"), codeSet);
     const notes = String(fd.get("notes") ?? "").trim() || null;
     setOfferSavingFor(property_id);
 
@@ -588,6 +626,7 @@ export function OpportunityDetailPage() {
         form.reset();
         const dateInput = form.elements.namedItem("offered_date") as HTMLInputElement | null;
         if (dateInput) dateInput.value = todayDateInputValue();
+        setOfferModalPropertyId(null);
       }
     } finally {
       setOfferSavingFor(null);
@@ -622,87 +661,172 @@ export function OpportunityDetailPage() {
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
           <div ref={embudoColumnRef} className="flex min-w-0 flex-1 flex-col space-y-4">
             {canEdit && opp && !currentFunnel?.is_system ? (
-              <form
-                key={`opp-status-${opp.id}`}
-                onSubmit={saveStatus}
-                className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6"
-              >
-                <h2 className="text-lg font-medium">Estado en embudo</h2>
-                <div>
-                  <Label htmlFor="status">Estado</Label>
-                  <select
-                    id="status"
-                    value={draftStatus}
-                    onChange={(e) => setDraftStatus(e.target.value as typeof draftStatus)}
-                    className="mt-1 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
-                  >
-                    <option value="OPEN">{OPPORTUNITY_STATUS_LABEL.OPEN}</option>
-                    <option value="WON">{OPPORTUNITY_STATUS_LABEL.WON}</option>
-                    <option value="LOST">{OPPORTUNITY_STATUS_LABEL.LOST}</option>
-                    <option value="ONHOLD">{OPPORTUNITY_STATUS_LABEL.ONHOLD}</option>
-                  </select>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="funnel_id">Funnel</Label>
-                    <select
-                      id="funnel_id"
-                      value={draftFunnelId}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setDraftFunnelId(v);
-                        const nextStages = [...stages]
-                          .filter((st) => st.funnel_id === v)
-                          .sort((a, b) => a.position - b.position);
-                        setDraftStageId((prev) => (nextStages.some((s) => s.id === prev) ? prev : (nextStages[0]?.id ?? "")));
+              <>
+                <div className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <h2 className="text-lg font-medium">Embudo · oportunidad</h2>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="shrink-0"
+                      onClick={() => {
+                        syncFunnelDraftFromOpp(opp);
+                        setFunnelModalOpen(true);
                       }}
-                      className="mt-1 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
                     >
-                      <option value="">—</option>
-                      {orgFunnels.map((funnel) => (
-                        <option key={funnel.id} value={funnel.id}>
-                          {funnel.is_system ? `${funnel.name} (sistema)` : funnel.name}
-                        </option>
-                      ))}
-                    </select>
+                      Cambiar funnel
+                    </Button>
                   </div>
-                  <div>
-                    <Label htmlFor="stage_id">Etapa</Label>
-                    <select
-                      id="stage_id"
-                      value={draftStageId}
-                      onChange={(e) => setDraftStageId(e.target.value)}
-                      disabled={!draftFunnelId}
-                      className="mt-1 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm disabled:opacity-50"
-                    >
-                      <option value="">—</option>
-                      {stagesForDraftFunnel.map((st) => (
-                        <option key={st.id} value={st.id}>
-                          {st.name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="space-y-3 border-t border-[var(--border)] pt-4 text-sm text-[var(--foreground)]">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Nombre</p>
+                      <p className="font-medium">{opp.title?.trim() || "Sin título"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Cliente</p>
+                      <p>{personName || "—"}</p>
+                    </div>
+                    {opp.estimated_value != null && String(opp.estimated_value).trim() !== "" ? (
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Valor estimado</p>
+                        <p className="font-mono tabular-nums">
+                          {(() => {
+                            const n = Number(opp.estimated_value);
+                            return Number.isFinite(n)
+                              ? n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+                              : opp.estimated_value;
+                          })()}
+                        </p>
+                      </div>
+                    ) : null}
+                    {opp.probability != null ? (
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Probabilidad</p>
+                        <p>{Math.round(Number(opp.probability))}%</p>
+                      </div>
+                    ) : null}
+                    <div className="grid gap-3 border-t border-[var(--border)] pt-3 sm:grid-cols-2">
+                      <p>
+                        <span className="text-[var(--muted)]">Embudo:</span> {currentFunnel?.name ?? "—"}
+                      </p>
+                      <p>
+                        <span className="text-[var(--muted)]">Etapa:</span>{" "}
+                        {stages.find((s) => s.id === opp.stage_id)?.name ?? "—"}
+                      </p>
+                      <p className="sm:col-span-2">
+                        <span className="text-[var(--muted)]">Estado comercial:</span> {opportunityStatusLabel(opp.status)}
+                      </p>
+                      {opp.lost_reason?.trim() ? (
+                        <p className="sm:col-span-2">
+                          <span className="text-[var(--muted)]">Motivo pérdida:</span> {opp.lost_reason}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <Label htmlFor="lost_reason">Motivo de pérdida (si está perdida)</Label>
-                  <Input id="lost_reason" value={draftLostReason} onChange={(e) => setDraftLostReason(e.target.value)} />
-                </div>
-                <Button type="submit">Actualizar estado</Button>
-                {isLastStage ? (
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button type="button" onClick={() => void closeOpportunity("WON")}>
-                      Ganada
-                    </Button>
-                    <Button type="button" variant="secondary" onClick={() => void closeOpportunity("LOST")}>
-                      Perdida
-                    </Button>
-                    <Button type="button" variant="secondary" onClick={() => void closeOpportunity("ONHOLD")}>
-                      En pausa
-                    </Button>
-                  </div>
-                ) : null}
-              </form>
+
+                <Modal
+                  open={funnelModalOpen}
+                  title="Cambiar funnel"
+                  panelClassName="max-w-lg"
+                  onClose={closeFunnelModal}
+                  footer={
+                    <>
+                      <Button type="button" variant="ghost" onClick={closeFunnelModal}>
+                        Cancelar
+                      </Button>
+                      <Button type="submit" form={`funnel-move-form-${opp.id}`}>
+                        Guardar cambio
+                      </Button>
+                    </>
+                  }
+                >
+                  <form id={`funnel-move-form-${opp.id}`} onSubmit={saveStatus} className="space-y-4">
+                    <p className="text-sm text-[var(--muted)]">
+                      Definí el embudo destino y la etapa. El resto de los datos del negocio se siguen viendo abajo sin cambios hasta
+                      que guardés.
+                    </p>
+                    <div>
+                      <Label htmlFor="status">Estado</Label>
+                      <select
+                        id="status"
+                        value={draftStatus}
+                        onChange={(e) => setDraftStatus(e.target.value as typeof draftStatus)}
+                        className="mt-1 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
+                      >
+                        <option value="OPEN">{OPPORTUNITY_STATUS_LABEL.OPEN}</option>
+                        <option value="WON">{OPPORTUNITY_STATUS_LABEL.WON}</option>
+                        <option value="LOST">{OPPORTUNITY_STATUS_LABEL.LOST}</option>
+                        <option value="ONHOLD">{OPPORTUNITY_STATUS_LABEL.ONHOLD}</option>
+                      </select>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <Label htmlFor="funnel_id">Funnel</Label>
+                        <select
+                          id="funnel_id"
+                          value={draftFunnelId}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setDraftFunnelId(v);
+                            const nextStages = [...stages]
+                              .filter((st) => st.funnel_id === v)
+                              .sort((a, b) => a.position - b.position);
+                            setDraftStageId((prev) =>
+                              nextStages.some((s) => s.id === prev) ? prev : (nextStages[0]?.id ?? ""),
+                            );
+                          }}
+                          className="mt-1 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
+                        >
+                          <option value="">—</option>
+                          {orgFunnels.map((funnel) => (
+                            <option key={funnel.id} value={funnel.id}>
+                              {funnel.is_system ? `${funnel.name} (sistema)` : funnel.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <Label htmlFor="stage_id">Etapa</Label>
+                        <select
+                          id="stage_id"
+                          value={draftStageId}
+                          onChange={(e) => setDraftStageId(e.target.value)}
+                          disabled={!draftFunnelId}
+                          className="mt-1 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm disabled:opacity-50"
+                        >
+                          <option value="">—</option>
+                          {stagesForDraftFunnel.map((st) => (
+                            <option key={st.id} value={st.id}>
+                              {st.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="lost_reason">Motivo de pérdida (si está perdida)</Label>
+                      <Input id="lost_reason" value={draftLostReason} onChange={(e) => setDraftLostReason(e.target.value)} />
+                    </div>
+                    {isLastStage ? (
+                      <div className="grid gap-2 border-t border-[var(--border)] pt-4">
+                        <p className="text-xs text-[var(--muted)]">Última etapa del embudo: cierre rápido</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <Button type="button" onClick={() => void closeOpportunity("WON")}>
+                            Ganada
+                          </Button>
+                          <Button type="button" variant="secondary" onClick={() => void closeOpportunity("LOST")}>
+                            Perdida
+                          </Button>
+                          <Button type="button" variant="secondary" onClick={() => void closeOpportunity("ONHOLD")}>
+                            En pausa
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </form>
+                </Modal>
+              </>
             ) : null}
             {canEdit && currentFunnel?.is_system ? (
               <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 text-sm text-[var(--muted)]">
@@ -748,10 +872,6 @@ export function OpportunityDetailPage() {
             >
               <div className="shrink-0 space-y-2">
                 <h2 className="text-base font-medium">Agregar o quitar propiedades</h2>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  Ordenadas por score con esta persona (cuando hay preferencias cargadas). Con oferta activa, la propiedad
-                  queda fijada hasta descartar o resolver todas las ofertas.
-                </p>
                 <Label htmlFor="opp-picker-q" className="text-xs">
                   Buscar en la lista
                 </Label>
@@ -861,7 +981,6 @@ export function OpportunityDetailPage() {
                   .filter((p) => p.kind === "OFFER_OPPORTUNITY")
                   .map((r) => ({ effective_at: r.effective_at, amount: r.amount })) ?? [];
               const chartAppr = series?.appraisals ?? [];
-              const { strong: breakEvenStrong, weak: breakEvenWeak } = equilibriumRefs(series);
               const propOffers = offers.filter((o) => o.property_id === l.property_id);
               const linkStatus = l.link_status ?? "PROPOSED";
               const listingRows = (series?.prices ?? []).filter((p) => p.kind === "LISTING_PUBLIC");
@@ -958,10 +1077,6 @@ export function OpportunityDetailPage() {
                           {l.match_score != null ? (
                             <span className="font-mono text-xs text-[var(--accent)]">Score {l.match_score.toFixed(1)}</span>
                           ) : null}
-                          <span className="text-xs text-[var(--muted)]">
-                            · En oportunidad:{" "}
-                            <span className="text-[var(--foreground)]">{OPP_PROPERTY_LINK_STATUS_LABEL[linkStatus]}</span>
-                          </span>
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
                           <MatchScoreInfoButton explainJson={l.match_explain_json} className="size-8" />
@@ -1006,9 +1121,47 @@ export function OpportunityDetailPage() {
                           <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Última oferta</dt>
                           <dd className="mt-0.5 font-mono tabular-nums text-[var(--foreground)]">{offerSummary}</dd>
                         </div>
-                        <div className="col-span-2 sm:col-span-1">
+                        <div className="min-w-[7rem]">
                           <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Estado oferta</dt>
-                          <dd className="mt-0.5 text-[var(--foreground)]">{offerStatusSummary}</dd>
+                          <dd className="mt-0.5 text-[var(--foreground)]">
+                            {canEdit && lastOffer ? (
+                              <select
+                                value={lastOffer.status}
+                                onChange={(e) =>
+                                  void updateOfferStatus(lastOffer.id, e.target.value as OfferInOpportunityStatus)
+                                }
+                                className="h-8 w-full max-w-[11rem] rounded border border-[var(--border)] bg-[#fffcf7] px-1 text-[11px]"
+                              >
+                                {(Object.keys(OFFER_IN_OPP_STATUS_LABEL) as OfferInOpportunityStatus[]).map((k) => (
+                                  <option key={k} value={k}>
+                                    {OFFER_IN_OPP_STATUS_LABEL[k]}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              offerStatusSummary
+                            )}
+                          </dd>
+                        </div>
+                        <div className="col-span-2 min-w-[8rem] sm:col-span-1 lg:col-span-1">
+                          <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">Estado oportunidad</dt>
+                          <dd className="mt-0.5 text-[var(--foreground)]">
+                            {canEdit && !l.archived_at ? (
+                              <select
+                                value={linkStatus}
+                                onChange={(e) => void updateLinkStatus(l.property_id, e.target.value as OppPropertyLinkStatus)}
+                                className="h-8 w-full max-w-[14rem] rounded border border-[var(--border)] bg-[#fffcf7] px-1 text-[11px]"
+                              >
+                                {(Object.keys(OPP_PROPERTY_LINK_STATUS_LABEL) as OppPropertyLinkStatus[]).map((k) => (
+                                  <option key={k} value={k}>
+                                    {OPP_PROPERTY_LINK_STATUS_LABEL[k]}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              OPP_PROPERTY_LINK_STATUS_LABEL[linkStatus]
+                            )}
+                          </dd>
                         </div>
                       </dl>
                     </div>
@@ -1019,41 +1172,13 @@ export function OpportunityDetailPage() {
                       id={`opp-prop-panel-${l.property_id}`}
                       className="space-y-4 border-t border-[var(--border)] bg-[var(--card)]/60 p-4"
                     >
-                      <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
-                        <div className="min-w-[12rem] max-w-xs shrink-0 flex-1">
-                          {canEdit ? (
-                            <label className="flex flex-col gap-1 text-sm">
-                              <span className="text-[var(--muted)]">Estado de la propiedad en esta oportunidad</span>
-                              <select
-                                value={linkStatus}
-                                onChange={(e) => void updateLinkStatus(l.property_id, e.target.value as OppPropertyLinkStatus)}
-                                className="h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
-                              >
-                                {(Object.keys(OPP_PROPERTY_LINK_STATUS_LABEL) as OppPropertyLinkStatus[]).map((k) => (
-                                  <option key={k} value={k}>
-                                    {OPP_PROPERTY_LINK_STATUS_LABEL[k]}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          ) : (
-                            <div className="space-y-1 text-sm">
-                              <p className="text-[var(--muted)]">Estado de la propiedad en esta oportunidad</p>
-                              <p className="font-medium text-[var(--foreground)]">{OPP_PROPERTY_LINK_STATUS_LABEL[linkStatus]}</p>
-                            </div>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1 basis-[min(100%,22rem)] sm:min-w-[18rem]">
-                          <PropertyPriceAppraisalChart
-                            listingPrices={listingPrices}
-                            offerPrices={offerPrices}
-                            appraisals={chartAppr}
-                            breakEvenStrong={breakEvenStrong}
-                            breakEvenWeak={breakEvenWeak}
-                            currency={chartCurrency}
-                            height={208}
-                          />
-                        </div>
+                      <div className="min-w-0 w-full max-w-full">
+                        <PropertyPriceAppraisalChart
+                          listingPrices={listingPrices}
+                          offerPrices={offerPrices}
+                          appraisals={chartAppr}
+                          currency={chartCurrency}
+                        />
                       </div>
                       <div>
                         <p className="text-xs font-medium text-[var(--muted)]">Última oferta y referencias</p>
@@ -1095,60 +1220,17 @@ export function OpportunityDetailPage() {
                           </ul>
                         )}
                         {canEdit ? (
-                          <form
-                            id={`offer-${l.property_id}`}
-                            className="mt-4 space-y-3 border-t border-[var(--border)] pt-4"
-                            onSubmit={(e) => void submitOffer(e, l.property_id)}
-                          >
-                            <div className="grid gap-3 sm:grid-cols-3">
-                              <div className="space-y-1">
-                                <Label htmlFor={`offer-amount-${l.property_id}`} className="text-xs text-[var(--muted)]">
-                                  Importe
-                                </Label>
-                                <Input
-                                  id={`offer-amount-${l.property_id}`}
-                                  name="amount"
-                                  type="number"
-                                  step="any"
-                                  placeholder="0"
-                                  className="h-10"
-                                  required
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label htmlFor={`offer-currency-${l.property_id}`} className="text-xs text-[var(--muted)]">
-                                  Moneda
-                                </Label>
-                                <CurrencySelect id={`offer-currency-${l.property_id}`} name="currency" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label htmlFor={`offer-date-${l.property_id}`} className="text-xs text-[var(--muted)]">
-                                  Fecha de la oferta
-                                </Label>
-                                <Input
-                                  id={`offer-date-${l.property_id}`}
-                                  name="offered_date"
-                                  type="date"
-                                  defaultValue={todayDateInputValue()}
-                                  className="h-10"
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-1">
-                              <Label htmlFor={`offer-notes-${l.property_id}`} className="text-xs text-[var(--muted)]">
-                                Nota
-                              </Label>
-                              <Input id={`offer-notes-${l.property_id}`} name="notes" placeholder="Opcional" className="h-10" />
-                            </div>
+                          <div className="mt-4 border-t border-[var(--border)] pt-4">
                             <Button
-                              type="submit"
+                              type="button"
                               size="sm"
                               variant="secondary"
                               disabled={offerSavingFor === l.property_id}
+                              onClick={() => setOfferModalPropertyId(l.property_id)}
                             >
-                              {offerSavingFor === l.property_id ? "Guardando…" : "Registrar oferta"}
+                              Registrar oferta
                             </Button>
-                          </form>
+                          </div>
                         ) : null}
                       </div>
                     </div>
@@ -1226,6 +1308,71 @@ export function OpportunityDetailPage() {
             )}
           </ul>
         </div>
+
+        <Modal
+          open={offerModalPropertyId !== null}
+          title="Registrar oferta"
+          panelClassName="max-w-lg"
+          onClose={() => {
+            if (offerSavingFor && offerSavingFor === offerModalPropertyId) return;
+            setOfferModalPropertyId(null);
+          }}
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  if (offerSavingFor && offerSavingFor === offerModalPropertyId) return;
+                  setOfferModalPropertyId(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                form="opp-offer-modal-form"
+                disabled={Boolean(
+                  offerModalPropertyId !== null &&
+                    offerSavingFor !== null &&
+                    offerSavingFor === offerModalPropertyId,
+                )}
+              >
+                {offerModalPropertyId !== null &&
+                offerSavingFor !== null &&
+                offerSavingFor === offerModalPropertyId
+                  ? "Guardando…"
+                  : "Registrar"}
+              </Button>
+            </>
+          }
+        >
+          {offerModalPropertyId ? (
+            <form
+              key={offerModalPropertyId}
+              id="opp-offer-modal-form"
+              className="space-y-4"
+              onSubmit={(e) => void submitOffer(e, offerModalPropertyId)}
+            >
+              {links.find((x) => x.property_id === offerModalPropertyId)?.Property?.title ? (
+                <p className="text-sm text-[var(--muted)]">
+                  {links.find((x) => x.property_id === offerModalPropertyId)?.Property?.title}
+                </p>
+              ) : null}
+              <PropertyAmountDateFormFields
+                variant="offer"
+                amountInputId="offer-modal-amount"
+                currencyInputId="offer-modal-currency"
+                dateInputId="offer-modal-date"
+                noteInputId="offer-modal-notes"
+                dateFieldName="offered_date"
+                noteFieldName="notes"
+                dateLabel="Fecha de la oferta"
+                defaultDate={todayDateInputValue()}
+              />
+            </form>
+          ) : null}
+        </Modal>
 
         <Modal
           open={activityModalOpen}

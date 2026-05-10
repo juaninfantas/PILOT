@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Star } from "lucide-react";
+import { Loader2, Pencil, Save, Star, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useActiveOrganization } from "../../contexts/OrganizationContext";
 import { Button } from "../../components/ui/button";
@@ -38,15 +38,25 @@ const ubicacionFlags: FlagItem[] = [
 ubicacionFlags.sort(sortByLabel);
 
 const comercialFlags: FlagItem[] = [
-  { key: "show_spec_amenities", label: "Características" },
+  { key: "show_spec_amenities", label: "Etiquetas / tags (texto libre)" },
+  { key: "show_spec_elevator", label: "Ascensor" },
+  { key: "show_spec_balcony", label: "Balcón" },
   { key: "show_spec_bathrooms", label: "Cantidad de baños" },
   { key: "show_spec_covered_m2", label: "Superficie cubierta" },
   { key: "show_spec_condition", label: "Estado / condición del inmueble" },
   { key: "show_spec_exclusive", label: "Exclusiva" },
+  { key: "show_spec_floor_count", label: "Cantidad de plantas" },
+  { key: "show_spec_garden", label: "Jardín / parque" },
   { key: "show_spec_kind", label: "Tipo de propiedad" },
+  { key: "show_spec_laundry", label: "Lavadero independiente" },
   { key: "show_spec_listing_status", label: "Estado comercial (publicación)" },
   { key: "show_spec_parking", label: "Estacionamiento" },
+  { key: "show_spec_patio", label: "Patio" },
+  { key: "show_spec_pool", label: "Pileta" },
+  { key: "show_spec_quincho", label: "Quincho" },
   { key: "show_spec_rooms", label: "Ambientes" },
+  { key: "show_spec_service_room", label: "Dependencia / servicio" },
+  { key: "show_spec_terrace", label: "Terraza" },
   { key: "show_spec_total_m2", label: "Superficie total" },
   { key: "show_price", label: "Precio público" },
 ];
@@ -110,6 +120,16 @@ function defaultDraft(): DraftState {
     show_spec_parking: true,
     show_spec_condition: true,
     show_spec_amenities: true,
+    show_spec_quincho: true,
+    show_spec_pool: true,
+    show_spec_floor_count: true,
+    show_spec_patio: true,
+    show_spec_terrace: true,
+    show_spec_laundry: true,
+    show_spec_balcony: true,
+    show_spec_garden: true,
+    show_spec_service_room: true,
+    show_spec_elevator: true,
     show_description: true,
     show_photos: true,
     show_geo_path: true,
@@ -139,6 +159,16 @@ function rowToDraft(row: FormatRow): DraftState {
     show_spec_parking: row.show_spec_parking,
     show_spec_condition: row.show_spec_condition,
     show_spec_amenities: row.show_spec_amenities,
+    show_spec_quincho: row.show_spec_quincho,
+    show_spec_pool: row.show_spec_pool,
+    show_spec_floor_count: row.show_spec_floor_count,
+    show_spec_patio: row.show_spec_patio,
+    show_spec_terrace: row.show_spec_terrace,
+    show_spec_laundry: row.show_spec_laundry,
+    show_spec_balcony: row.show_spec_balcony,
+    show_spec_garden: row.show_spec_garden,
+    show_spec_service_room: row.show_spec_service_room,
+    show_spec_elevator: row.show_spec_elevator,
     show_description: row.show_description,
     show_photos: row.show_photos,
     show_geo_path: row.show_geo_path,
@@ -286,6 +316,16 @@ export function PropertyShareFormatsSection() {
       show_spec_parking: draft.show_spec_parking,
       show_spec_condition: draft.show_spec_condition,
       show_spec_amenities: draft.show_spec_amenities,
+      show_spec_quincho: draft.show_spec_quincho,
+      show_spec_pool: draft.show_spec_pool,
+      show_spec_floor_count: draft.show_spec_floor_count,
+      show_spec_patio: draft.show_spec_patio,
+      show_spec_terrace: draft.show_spec_terrace,
+      show_spec_laundry: draft.show_spec_laundry,
+      show_spec_balcony: draft.show_spec_balcony,
+      show_spec_garden: draft.show_spec_garden,
+      show_spec_service_room: draft.show_spec_service_room,
+      show_spec_elevator: draft.show_spec_elevator,
       show_description: draft.show_description,
       show_photos: draft.show_photos,
       show_geo_path: draft.show_geo_path,
@@ -333,14 +373,17 @@ export function PropertyShareFormatsSection() {
     <section id="share-formats" className="scroll-mt-6 rounded-xl border border-[var(--jif-line)] bg-[var(--card)] p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Formatos de compartir</h2>
+          <p className="jif-caps jif-dim" style={{ fontSize: "0.65rem" }}>
+            Compartir propiedad
+          </p>
+          <h2 className="mt-2 text-lg font-semibold">Formatos de compartir</h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
             Definí qué campos se muestran en el enlace público, el PDF y el texto copiable. Los formatos se listan en orden
             alfabético por nombre. Marcá con la estrella cuál se abre por defecto en el modal de compartir (si no, se usa «Completa» o
             el primero alfabéticamente).
           </p>
         </div>
-        <Button type="button" variant="secondary" size="sm" onClick={() => openNew()}>
+        <Button type="button" className="jif-btn-primary" onClick={() => openNew()}>
           Nuevo formato
         </Button>
       </div>
@@ -376,12 +419,24 @@ export function PropertyShareFormatsSection() {
                   </span>
                 ) : null}
               </div>
-              <div className="flex gap-2">
-                <button type="button" className="text-[var(--accent)] hover:underline" onClick={() => openEdit(r)}>
-                  Editar
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  className="rounded-md p-2 text-[var(--accent)] hover:bg-stone-900/5"
+                  title="Editar formato"
+                  aria-label="Editar formato"
+                  onClick={() => openEdit(r)}
+                >
+                  <Pencil className="size-4" strokeWidth={1.75} />
                 </button>
-                <button type="button" className="text-red-600 hover:underline" onClick={() => void removeRow(r)}>
-                  Eliminar
+                <button
+                  type="button"
+                  className="rounded-md p-2 text-red-700 hover:bg-red-50"
+                  title="Eliminar formato"
+                  aria-label="Eliminar formato"
+                  onClick={() => void removeRow(r)}
+                >
+                  <Trash2 className="size-4" strokeWidth={1.75} />
                 </button>
               </div>
             </li>
@@ -426,8 +481,15 @@ export function PropertyShareFormatsSection() {
               <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="button" disabled={saving} onClick={() => void saveModal()}>
-                {saving ? "Guardando…" : "Guardar"}
+              <Button
+                type="button"
+                disabled={saving}
+                className="jif-btn-primary inline-flex h-10 min-w-10 items-center justify-center px-3"
+                onClick={() => void saveModal()}
+                aria-label="Guardar"
+                title="Guardar"
+              >
+                {saving ? <Loader2 className="size-5 shrink-0 animate-spin" /> : <Save className="size-5 shrink-0" />}
               </Button>
             </div>
           </div>

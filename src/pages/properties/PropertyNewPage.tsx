@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
-import { geocodeAddress } from "../../lib/geocode";
 import { RequirePermission } from "../../components/RequirePermission";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -11,14 +10,15 @@ import { Tabs } from "../../components/ui/tabs";
 import { PROPERTY_KIND_LABEL, PROPERTY_KINDS } from "../../lib/property-options";
 import { LISTING_STATUS_KEYS, LISTING_STATUS_LABEL } from "../../lib/property-listing-status";
 import type { ListingStatus, PropertyKind } from "../../types/database";
+import { useCurrencyCatalog } from "../../contexts/CurrencyCatalogContext";
 import { useActiveOrganization } from "../../contexts/OrganizationContext";
 import { CurrencySelect } from "../../components/ui/currency-select";
 import { normalizeCurrencyCode } from "../../lib/currencies";
-import { MANAGEMENT_OPTIONS, managementCodesFromForm, serializeManagement } from "../../lib/property-management";
+import { serializeManagement, type ManagementCode } from "../../lib/property-management";
+import { PropertyGestiónExclusiveFields } from "../../components/properties/PropertyGestiónExclusiveFields";
+import { propertyConditionSelectOptions } from "../../lib/property-condition";
 import { GeoCascadingSelect } from "../../components/geo/GeoCascadingSelect";
-import type { MapPin } from "../../components/map/PropertyMap";
-
-const PropertyMap = lazy(() => import("../../components/map/PropertyMap").then((m) => ({ default: m.PropertyMap })));
+import { PropertyCommercialExteriorFields, parseOptionalFloorCountString } from "../../components/properties/PropertyCommercialExteriorFields";
 
 const DEFAULT_GEO_COUNTRY = "AR";
 
@@ -30,60 +30,28 @@ const FORM_TABS = [
 
 export function PropertyNewPage() {
   const org = useActiveOrganization();
+  const { codeSet } = useCurrencyCatalog();
   const nav = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [tab, setTab] = useState("general");
-  const [showMap, setShowMap] = useState(false);
-  const [mapPreview, setMapPreview] = useState<{ lat: number; lng: number } | null>(null);
+  const [managementCodes, setManagementCodes] = useState<ManagementCode[]>([]);
+  const [isExclusive, setIsExclusive] = useState(false);
+  const [hasQuincho, setHasQuincho] = useState(false);
+  const [hasPool, setHasPool] = useState(false);
+  const [floorCountInput, setFloorCountInput] = useState("");
+  const [hasPatio, setHasPatio] = useState(false);
+  const [hasTerrace, setHasTerrace] = useState(false);
+  const [hasLaundry, setHasLaundry] = useState(false);
+  const [hasBalcony, setHasBalcony] = useState(false);
+  const [hasGarden, setHasGarden] = useState(false);
+  const [hasServiceRoom, setHasServiceRoom] = useState(false);
+  const [hasElevator, setHasElevator] = useState(false);
+  const [geoCountryCode, setGeoCountryCode] = useState(DEFAULT_GEO_COUNTRY);
 
   useEffect(() => {
     void import("./PropertyDetailPage");
   }, []);
-
-  const mapPin: MapPin | null = useMemo(() => {
-    if (!mapPreview) return null;
-    return {
-      id: "new",
-      title: "Nueva propiedad",
-      city_zone: "",
-      lat: mapPreview.lat,
-      lng: mapPreview.lng,
-      priceLabel: "—",
-      kindLabel: "—",
-    };
-  }, [mapPreview]);
-
-  function readLatLngFromInputs(): { lat: number; lng: number } | null {
-    const la = (document.getElementById("lat") as HTMLInputElement | null)?.value;
-    const ln = (document.getElementById("lng") as HTMLInputElement | null)?.value;
-    const lat = la ? Number(la) : NaN;
-    const lng = ln ? Number(ln) : NaN;
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng };
-  }
-
-  async function geolocateFromFields() {
-    const address = (document.getElementById("address") as HTMLInputElement | null)?.value?.trim() ?? "";
-    const postal = (document.getElementById("postal_code") as HTMLInputElement | null)?.value?.trim() ?? "";
-    const city = (document.getElementById("city_zone_hidden") as HTMLInputElement | null)?.value?.trim() ?? "";
-    const geoUnit = (document.getElementById("geo_unit_id_hidden") as HTMLInputElement | null)?.value?.trim() ?? "";
-    let geoLine = "";
-    if (geoUnit) {
-      const { data } = await supabase.rpc("geo_unit_path_line", { p_unit_id: geoUnit });
-      geoLine = typeof data === "string" ? data.trim() : "";
-    }
-    const q = [address, postal, city, geoLine].filter(Boolean).join(", ");
-    if (!q) return;
-    const g = await geocodeAddress(q);
-    if (!g) return;
-    const la = document.getElementById("lat") as HTMLInputElement | null;
-    const ln = document.getElementById("lng") as HTMLInputElement | null;
-    if (la) la.value = String(g.lat);
-    if (ln) ln.value = String(g.lng);
-    setMapPreview({ lat: g.lat, lng: g.lng });
-    setShowMap(true);
-  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -101,24 +69,8 @@ export function PropertyNewPage() {
     const address = String(fd.get("address") ?? "").trim() || null;
     const postal_code = String(fd.get("postal_code") ?? "").trim() || null;
     const geoRaw = String(fd.get("geo_unit_id") ?? "").trim();
-    let lat = fd.get("lat") ? Number(fd.get("lat")) : null;
-    let lng = fd.get("lng") ? Number(fd.get("lng")) : null;
     const geo_unit_id = geoRaw ? geoRaw : null;
-    if (lat == null || Number.isNaN(lat) || lng == null || Number.isNaN(lng)) {
-      let geoLine: string | null = null;
-      if (geo_unit_id) {
-        const { data } = await supabase.rpc("geo_unit_path_line", { p_unit_id: geo_unit_id });
-        geoLine = typeof data === "string" ? data : null;
-      }
-      const q = [address, postal_code, city_zone, geoLine].filter((x) => (x ?? "").trim()).join(", ");
-      if (q.trim()) {
-        const g = await geocodeAddress(q);
-        if (g) {
-          lat = g.lat;
-          lng = g.lng;
-        }
-      }
-    }
+
     const { data: u } = await supabase.auth.getUser();
     const uid = u.user?.id ?? null;
 
@@ -140,12 +92,22 @@ export function PropertyNewPage() {
         parking: fd.get("parking") ? parseInt(String(fd.get("parking")), 10) : null,
         condition: String(fd.get("condition") ?? "").trim() || null,
         description: String(fd.get("description") ?? "").trim() || null,
-        is_exclusive: fd.get("is_exclusive") === "on",
-        management: serializeManagement(managementCodesFromForm(fd.getAll("management"))) || null,
+        is_exclusive: isExclusive,
+        management: serializeManagement(managementCodes) || null,
         amenity_tags: String(fd.get("amenity_tags") ?? "").trim() || null,
-        lat,
-        lng,
+        lat: null,
+        lng: null,
         listing_status,
+        has_quincho: hasQuincho,
+        has_pool: hasPool,
+        floor_count: parseOptionalFloorCountString(floorCountInput),
+        has_patio: hasPatio,
+        has_terrace: hasTerrace,
+        has_laundry: hasLaundry,
+        has_balcony: hasBalcony,
+        has_garden: hasGarden,
+        has_service_room: hasServiceRoom,
+        has_elevator: hasElevator,
         created_by_id: uid,
       })
       .select("id")
@@ -162,7 +124,7 @@ export function PropertyNewPage() {
       await supabase.from("PropertyPrice").insert({
         property_id: prop.id,
         amount: String(priceAmount),
-        currency: normalizeCurrencyCode(String(fd.get("initialPriceCurrency") ?? "USD")),
+        currency: normalizeCurrencyCode(String(fd.get("initialPriceCurrency") ?? "USD"), codeSet),
         kind: "LISTING_PUBLIC",
         created_by_id: uid,
       });
@@ -221,6 +183,35 @@ export function PropertyNewPage() {
                 </select>
               </div>
               <div className="md:col-span-6">
+                <Label htmlFor="condition">Estado del inmueble</Label>
+                <select
+                  id="condition"
+                  name="condition"
+                  className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
+                  defaultValue=""
+                >
+                  {propertyConditionSelectOptions(null).map((o) => (
+                    <option key={o.value || "__empty"} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <PropertyGestiónExclusiveFields
+                management={managementCodes}
+                onToggleManagement={(code) =>
+                  setManagementCodes((prev) =>
+                    prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
+                  )
+                }
+                isExclusive={isExclusive}
+                onExclusiveChange={setIsExclusive}
+              />
+              <div className="md:col-span-4">
+                <Label htmlFor="amenity_tags">Tags (coma)</Label>
+                <Input id="amenity_tags" name="amenity_tags" placeholder="patio, cochera, …" />
+              </div>
+              <div className="md:col-span-6">
                 <Label htmlFor="description">Descripción</Label>
                 <Textarea id="description" name="description" rows={3} />
               </div>
@@ -231,7 +222,17 @@ export function PropertyNewPage() {
           <div className={tab === "ubicacion" ? "block" : "hidden"}>
             <div className="grid gap-4 md:grid-cols-12">
               <div className="md:col-span-12">
-                <GeoCascadingSelect countryCode={DEFAULT_GEO_COUNTRY} value={null} emitCityZone />
+                <GeoCascadingSelect
+                  countryCode={geoCountryCode}
+                  onCountryCodeChange={setGeoCountryCode}
+                  value={null}
+                  emitCityZone
+                />
+              </div>
+              <div className="md:col-span-12">
+                <p className="text-xs text-[var(--muted)]">
+                  El cascada país → provincia → partido → localidad alimenta el maestro geo (mapas generales, compartidos). No se usa geocodificación en esta pantalla.
+                </p>
               </div>
               <div className="md:col-span-8">
                 <Label htmlFor="address">Dirección</Label>
@@ -241,49 +242,6 @@ export function PropertyNewPage() {
                 <Label htmlFor="postal_code">Código postal</Label>
                 <Input id="postal_code" name="postal_code" />
               </div>
-              <div className="md:col-span-6">
-                <Label htmlFor="lat">Latitud</Label>
-                <Input id="lat" name="lat" type="number" step="any" placeholder="-34.603722" />
-              </div>
-              <div className="md:col-span-6">
-                <Label htmlFor="lng">Longitud</Label>
-                <Input id="lng" name="lng" type="number" step="any" placeholder="-58.381592" />
-              </div>
-              <div className="flex flex-wrap gap-2 md:col-span-12">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void geolocateFromFields()}
-                >
-                  Geolocalizar
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    if (showMap) {
-                      setShowMap(false);
-                      return;
-                    }
-                    const p = readLatLngFromInputs();
-                    if (p) {
-                      setMapPreview(p);
-                      setShowMap(true);
-                    }
-                  }}
-                >
-                  {showMap ? "Ocultar mapa" : "Ver en mapa"}
-                </Button>
-              </div>
-              {showMap && mapPin ? (
-                <div className="md:col-span-12">
-                  <Suspense fallback={<p className="text-xs text-[var(--muted)]">Cargando mapa…</p>}>
-                    <PropertyMap pins={[mapPin]} className="h-[min(40vh,320px)]" />
-                  </Suspense>
-                </div>
-              ) : null}
             </div>
           </div>
 
@@ -310,36 +268,28 @@ export function PropertyNewPage() {
                 <Label htmlFor="parking">Coch.</Label>
                 <Input id="parking" name="parking" type="number" />
               </div>
-              <div className="md:col-span-4">
-                <Label htmlFor="condition">Estado</Label>
-                <Input id="condition" name="condition" placeholder="A estrenar, usado…" />
-              </div>
-              <div className="md:col-span-12">
-                <Label>Gestión</Label>
-                <div className="mt-2 flex flex-wrap gap-4">
-                  {MANAGEMENT_OPTIONS.map((opt) => (
-                    <label key={opt.value} className="flex cursor-pointer items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        name="management"
-                        value={opt.value}
-                        className="size-4 rounded border-[var(--border)]"
-                      />
-                      {opt.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className="md:col-span-4">
-                <Label htmlFor="amenity_tags">Tags (coma)</Label>
-                <Input id="amenity_tags" name="amenity_tags" placeholder="patio, cochera, …" />
-              </div>
-              <div className="flex items-center gap-2 md:col-span-12">
-                <input id="is_exclusive" name="is_exclusive" type="checkbox" className="size-4 rounded border-[var(--border)]" />
-                <Label htmlFor="is_exclusive" className="mb-0 cursor-pointer">
-                  Exclusividad
-                </Label>
-              </div>
+              <PropertyCommercialExteriorFields
+                hasQuincho={hasQuincho}
+                onHasQuinchoChange={setHasQuincho}
+                hasPool={hasPool}
+                onHasPoolChange={setHasPool}
+                floorCountInput={floorCountInput}
+                onFloorCountInputChange={setFloorCountInput}
+                hasPatio={hasPatio}
+                onHasPatioChange={setHasPatio}
+                hasTerrace={hasTerrace}
+                onHasTerraceChange={setHasTerrace}
+                hasLaundry={hasLaundry}
+                onHasLaundryChange={setHasLaundry}
+                hasBalcony={hasBalcony}
+                onHasBalconyChange={setHasBalcony}
+                hasGarden={hasGarden}
+                onHasGardenChange={setHasGarden}
+                hasServiceRoom={hasServiceRoom}
+                onHasServiceRoomChange={setHasServiceRoom}
+                hasElevator={hasElevator}
+                onHasElevatorChange={setHasElevator}
+              />
               <div className="md:col-span-12">
                 <p className="mb-3 text-sm font-medium text-[var(--muted)]">Precio inicial (opcional)</p>
                 <div className="grid gap-3 md:grid-cols-12">

@@ -1,20 +1,19 @@
-import { lazy, Suspense, useState, type FormEvent } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { Tabs } from "../../components/ui/tabs";
 import { PROPERTY_KIND_LABEL, PROPERTY_KINDS } from "../../lib/property-options";
 import { LISTING_STATUS_KEYS, LISTING_STATUS_LABEL } from "../../lib/property-listing-status";
-import { MANAGEMENT_OPTIONS, parseManagement } from "../../lib/property-management";
+import { parseManagement, type ManagementCode } from "../../lib/property-management";
+import { PropertyGestiónExclusiveFields } from "../../components/properties/PropertyGestiónExclusiveFields";
+import { propertyConditionSelectOptions } from "../../lib/property-condition";
 import type { Database } from "../../types/database";
-import { geocodeAddress } from "../../lib/geocode";
-import { supabase } from "../../lib/supabase";
 import { PropertyContactsPanel } from "./PropertyContactsPanel";
 import { GeoCascadingSelect } from "../../components/geo/GeoCascadingSelect";
 import { Button } from "../../components/ui/button";
-import type { MapPin } from "../../components/map/PropertyMap";
-
-const PropertyMap = lazy(() => import("../../components/map/PropertyMap").then((m) => ({ default: m.PropertyMap })));
+import { supabase } from "../../lib/supabase";
+import { PropertyCommercialExteriorFields } from "../../components/properties/PropertyCommercialExteriorFields";
 
 const DEFAULT_GEO_COUNTRY = "AR";
 
@@ -49,42 +48,85 @@ export function PropertyDetailEditForm({
   mainSaving,
 }: PropertyDetailEditFormProps) {
   const idx = EDIT_TABS.findIndex((t) => t.id === editTab);
-  const [showMap, setShowMap] = useState(false);
-  const [draftLatLng, setDraftLatLng] = useState<{ lat: number; lng: number } | null>(null);
 
-  async function geolocateFromFields() {
-    const address = (document.getElementById("address") as HTMLInputElement | null)?.value?.trim() ?? "";
-    const postal = (document.getElementById("postal_code") as HTMLInputElement | null)?.value?.trim() ?? "";
-    const city = (document.getElementById("city_zone_hidden") as HTMLInputElement | null)?.value?.trim() ?? "";
-    const geoUnit = (document.getElementById("geo_unit_id_hidden") as HTMLInputElement | null)?.value?.trim() ?? "";
-    let geoLine = "";
-    if (geoUnit) {
-      const { data } = await supabase.rpc("geo_unit_path_line", { p_unit_id: geoUnit });
-      geoLine = typeof data === "string" ? data.trim() : "";
+  const [management, setManagement] = useState<ManagementCode[]>(() => parseManagement(property.management));
+  const [isExclusive, setIsExclusive] = useState(property.is_exclusive);
+  const [hasQuincho, setHasQuincho] = useState(property.has_quincho);
+  const [hasPool, setHasPool] = useState(property.has_pool);
+  const [floorCountInput, setFloorCountInput] = useState(property.floor_count != null ? String(property.floor_count) : "");
+  const [hasPatio, setHasPatio] = useState(property.has_patio);
+  const [hasTerrace, setHasTerrace] = useState(property.has_terrace);
+  const [hasLaundry, setHasLaundry] = useState(property.has_laundry);
+  const [hasBalcony, setHasBalcony] = useState(property.has_balcony);
+  const [hasGarden, setHasGarden] = useState(property.has_garden);
+  const [hasServiceRoom, setHasServiceRoom] = useState(property.has_service_room);
+  const [hasElevator, setHasElevator] = useState(property.has_elevator);
+  const [geoCountryCode, setGeoCountryCode] = useState(DEFAULT_GEO_COUNTRY);
+  /** `country_code` del `geo_unit_id` persistido (null si no hay o no existe). */
+  const [savedGeoUnitCountry, setSavedGeoUnitCountry] = useState<string | null>(null);
+
+  useEffect(() => {
+    setManagement(parseManagement(property.management));
+    setIsExclusive(property.is_exclusive);
+    setHasQuincho(property.has_quincho);
+    setHasPool(property.has_pool);
+    setFloorCountInput(property.floor_count != null ? String(property.floor_count) : "");
+    setHasPatio(property.has_patio);
+    setHasTerrace(property.has_terrace);
+    setHasLaundry(property.has_laundry);
+    setHasBalcony(property.has_balcony);
+    setHasGarden(property.has_garden);
+    setHasServiceRoom(property.has_service_room);
+    setHasElevator(property.has_elevator);
+  }, [
+    property.id,
+    editFormKey,
+    property.management,
+    property.is_exclusive,
+    property.has_quincho,
+    property.has_pool,
+    property.floor_count,
+    property.has_patio,
+    property.has_terrace,
+    property.has_laundry,
+    property.has_balcony,
+    property.has_garden,
+    property.has_service_room,
+    property.has_elevator,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const gid = property.geo_unit_id;
+    if (!gid) {
+      setSavedGeoUnitCountry(null);
+      setGeoCountryCode(DEFAULT_GEO_COUNTRY);
+      return;
     }
-    const q = [address, postal, city, geoLine].filter(Boolean).join(", ");
-    if (!q) return;
-    const g = await geocodeAddress(q);
-    if (!g) return;
-    const la = document.getElementById("lat") as HTMLInputElement | null;
-    const ln = document.getElementById("lng") as HTMLInputElement | null;
-    if (la) la.value = String(g.lat);
-    if (ln) ln.value = String(g.lng);
-    setDraftLatLng({ lat: g.lat, lng: g.lng });
-    setShowMap(true);
-  }
-
-  const mapPin: MapPin | null =
-    (draftLatLng ?? (property.lat != null && property.lng != null ? { lat: property.lat, lng: property.lng } : null))
-      ? {
-          id: property.id,
-          title: property.title,
-          city_zone: property.city_zone,
-          lat: (draftLatLng?.lat ?? property.lat)!,
-          lng: (draftLatLng?.lng ?? property.lng)!,
-          priceLabel: "—",
-          kindLabel: PROPERTY_KIND_LABEL[property.kind] ?? property.kind,
+    void supabase
+      .from("GeoUnit")
+      .select("country_code")
+      .eq("id", gid)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data?.country_code) {
+          setSavedGeoUnitCountry(null);
+          setGeoCountryCode(DEFAULT_GEO_COUNTRY);
+          return;
         }
+        const c = String(data.country_code).trim().toUpperCase();
+        setSavedGeoUnitCountry(c);
+        setGeoCountryCode(c);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [property.id, property.geo_unit_id, editFormKey]);
+
+  const geoCascadeValue =
+    property.geo_unit_id && savedGeoUnitCountry && geoCountryCode === savedGeoUnitCountry
+      ? property.geo_unit_id
       : null;
 
   const tabNavFooter = (
@@ -112,7 +154,7 @@ export function PropertyDetailEditForm({
   );
 
   return (
-    <div className="space-y-5 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+    <div className="space-y-5 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 sm:p-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium">Información</h2>
         {dirty && editTab !== "contacto" ? (
@@ -173,6 +215,40 @@ export function PropertyDetailEditForm({
                   ))}
                 </select>
               </div>
+              <div className="md:col-span-6">
+                <Label htmlFor="condition">Estado del inmueble</Label>
+                <select
+                  id="condition"
+                  name="condition"
+                  className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
+                  defaultValue={property.condition ?? ""}
+                >
+                  {propertyConditionSelectOptions(property.condition).map((o) => (
+                    <option key={o.value || "__empty"} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <PropertyGestiónExclusiveFields
+                management={management}
+                onToggleManagement={(code) => {
+                  setManagement((prev) =>
+                    prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
+                  );
+                  if (!dirty) setDirty(true);
+                }}
+                isExclusive={isExclusive}
+                onExclusiveChange={(value) => {
+                  setIsExclusive(value);
+                  if (!dirty) setDirty(true);
+                }}
+                syncFormHiddenFields
+              />
+              <div className="md:col-span-4">
+                <Label htmlFor="amenity_tags">Tags (coma)</Label>
+                <Input id="amenity_tags" name="amenity_tags" defaultValue={property.amenity_tags ?? ""} />
+              </div>
               <div className="md:col-span-12">
                 <Label htmlFor="description">Descripción</Label>
                 <Textarea id="description" name="description" rows={3} defaultValue={property.description ?? ""} />
@@ -183,7 +259,21 @@ export function PropertyDetailEditForm({
           <div className={editTab === "ubicacion" ? "block" : "hidden"}>
             <div className="grid gap-4 md:grid-cols-12">
               <div className="md:col-span-12">
-                <GeoCascadingSelect countryCode={DEFAULT_GEO_COUNTRY} value={property.geo_unit_id} emitCityZone cityZoneFallback={property.city_zone} />
+                <GeoCascadingSelect
+                  countryCode={geoCountryCode}
+                  onCountryCodeChange={(next) => {
+                    setGeoCountryCode(next);
+                    if (!dirty) setDirty(true);
+                  }}
+                  value={geoCascadeValue}
+                  emitCityZone
+                  cityZoneFallback={property.city_zone}
+                />
+              </div>
+              <div className="md:col-span-12">
+                <p className="text-xs text-[var(--muted)]">
+                  Las coordenadas y vistas de mapa no se cargan desde la ficha de propiedad: el maestro geográfico sirve para listados, filtros y compartidos.
+                </p>
               </div>
               <div className="md:col-span-8">
                 <Label htmlFor="address">Dirección</Label>
@@ -193,58 +283,6 @@ export function PropertyDetailEditForm({
                 <Label htmlFor="postal_code">Código postal</Label>
                 <Input id="postal_code" name="postal_code" defaultValue={property.postal_code ?? ""} />
               </div>
-              <div className="md:col-span-6">
-                <Label htmlFor="lat">Latitud</Label>
-                <Input
-                  id="lat"
-                  name="lat"
-                  type="number"
-                  step="any"
-                  defaultValue={property.lat ?? ""}
-                  onChange={(e) => {
-                    const lat = Number(e.target.value);
-                    const lngEl = document.getElementById("lng") as HTMLInputElement | null;
-                    const lng = lngEl ? Number(lngEl.value) : NaN;
-                    if (Number.isFinite(lat) && Number.isFinite(lng)) setDraftLatLng({ lat, lng });
-                  }}
-                />
-              </div>
-              <div className="md:col-span-6">
-                <Label htmlFor="lng">Longitud</Label>
-                <Input
-                  id="lng"
-                  name="lng"
-                  type="number"
-                  step="any"
-                  defaultValue={property.lng ?? ""}
-                  onChange={(e) => {
-                    const lng = Number(e.target.value);
-                    const latEl = document.getElementById("lat") as HTMLInputElement | null;
-                    const lat = latEl ? Number(latEl.value) : NaN;
-                    if (Number.isFinite(lat) && Number.isFinite(lng)) setDraftLatLng({ lat, lng });
-                  }}
-                />
-              </div>
-              <div className="flex flex-wrap gap-2 md:col-span-12">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void geolocateFromFields()}
-                >
-                  Geolocalizar
-                </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setShowMap((v) => !v)}>
-                  {showMap ? "Ocultar mapa" : "Ver en mapa"}
-                </Button>
-              </div>
-              {showMap && mapPin ? (
-                <div className="md:col-span-12">
-                  <Suspense fallback={<p className="text-xs text-[var(--muted)]">Cargando mapa…</p>}>
-                    <PropertyMap pins={[mapPin]} className="h-[min(40vh,320px)]" />
-                  </Suspense>
-                </div>
-              ) : null}
             </div>
           </div>
 
@@ -270,43 +308,33 @@ export function PropertyDetailEditForm({
                 <Label htmlFor="parking">Coch.</Label>
                 <Input id="parking" name="parking" type="number" defaultValue={property.parking ?? ""} />
               </div>
-              <div className="md:col-span-4">
-                <Label htmlFor="condition">Estado</Label>
-                <Input id="condition" name="condition" defaultValue={property.condition ?? ""} />
-              </div>
-              <div className="md:col-span-12">
-                <Label>Gestión</Label>
-                <div className="mt-2 flex flex-wrap gap-4">
-                  {MANAGEMENT_OPTIONS.map((opt) => (
-                    <label key={opt.value} className="flex cursor-pointer items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        name="management"
-                        value={opt.value}
-                        defaultChecked={parseManagement(property.management).includes(opt.value)}
-                        className="size-4 rounded border-[var(--border)]"
-                      />
-                      {opt.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className="md:col-span-4">
-                <Label htmlFor="amenity_tags">Tags (coma)</Label>
-                <Input id="amenity_tags" name="amenity_tags" defaultValue={property.amenity_tags ?? ""} />
-              </div>
-              <div className="flex items-center gap-2 md:col-span-12">
-                <input
-                  id="is_exclusive"
-                  name="is_exclusive"
-                  type="checkbox"
-                  defaultChecked={property.is_exclusive}
-                  className="size-4 rounded"
-                />
-                <Label htmlFor="is_exclusive" className="mb-0 cursor-pointer">
-                  Exclusividad
-                </Label>
-              </div>
+              <PropertyCommercialExteriorFields
+                hasQuincho={hasQuincho}
+                onHasQuinchoChange={setHasQuincho}
+                hasPool={hasPool}
+                onHasPoolChange={setHasPool}
+                floorCountInput={floorCountInput}
+                onFloorCountInputChange={setFloorCountInput}
+                hasPatio={hasPatio}
+                onHasPatioChange={setHasPatio}
+                hasTerrace={hasTerrace}
+                onHasTerraceChange={setHasTerrace}
+                hasLaundry={hasLaundry}
+                onHasLaundryChange={setHasLaundry}
+                hasBalcony={hasBalcony}
+                onHasBalconyChange={setHasBalcony}
+                hasGarden={hasGarden}
+                onHasGardenChange={setHasGarden}
+                hasServiceRoom={hasServiceRoom}
+                onHasServiceRoomChange={setHasServiceRoom}
+                hasElevator={hasElevator}
+                onHasElevatorChange={setHasElevator}
+                syncFormHiddenBools
+                syncFormHiddenFloor
+                onAnyInteraction={() => {
+                  if (!dirty) setDirty(true);
+                }}
+              />
             </div>
           </div>
 

@@ -21,7 +21,18 @@ export type PropertyShareVisibility = {
   show_spec_bathrooms: boolean;
   show_spec_parking: boolean;
   show_spec_condition: boolean;
+  /** Texto libre (comodidades / tags por coma). */
   show_spec_amenities: boolean;
+  show_spec_quincho: boolean;
+  show_spec_pool: boolean;
+  show_spec_floor_count: boolean;
+  show_spec_patio: boolean;
+  show_spec_terrace: boolean;
+  show_spec_laundry: boolean;
+  show_spec_balcony: boolean;
+  show_spec_garden: boolean;
+  show_spec_service_room: boolean;
+  show_spec_elevator: boolean;
   show_description: boolean;
   show_photos: boolean;
   /** Cadena «Etiqueta: valor › …» desde GeoLevelDef + GeoUnit */
@@ -49,6 +60,16 @@ export const FULL_SHARE_VISIBILITY: PropertyShareVisibility = {
   show_spec_parking: true,
   show_spec_condition: true,
   show_spec_amenities: true,
+  show_spec_quincho: true,
+  show_spec_pool: true,
+  show_spec_floor_count: true,
+  show_spec_patio: true,
+  show_spec_terrace: true,
+  show_spec_laundry: true,
+  show_spec_balcony: true,
+  show_spec_garden: true,
+  show_spec_service_room: true,
+  show_spec_elevator: true,
   show_description: true,
   show_photos: true,
   show_geo_path: true,
@@ -67,6 +88,16 @@ const SPEC_FLAG_KEYS: (keyof PropertyShareVisibility)[] = [
   "show_spec_parking",
   "show_spec_condition",
   "show_spec_amenities",
+  "show_spec_quincho",
+  "show_spec_pool",
+  "show_spec_floor_count",
+  "show_spec_patio",
+  "show_spec_terrace",
+  "show_spec_laundry",
+  "show_spec_balcony",
+  "show_spec_garden",
+  "show_spec_service_room",
+  "show_spec_elevator",
 ];
 
 /** True si algún campo de la ficha técnica (excluye precio) está visible. */
@@ -97,6 +128,16 @@ export type PropertyShareFormatRow = {
   show_spec_parking: boolean;
   show_spec_condition: boolean;
   show_spec_amenities: boolean;
+  show_spec_quincho: boolean;
+  show_spec_pool: boolean;
+  show_spec_floor_count: boolean;
+  show_spec_patio: boolean;
+  show_spec_terrace: boolean;
+  show_spec_laundry: boolean;
+  show_spec_balcony: boolean;
+  show_spec_garden: boolean;
+  show_spec_service_room: boolean;
+  show_spec_elevator: boolean;
   show_description: boolean;
   show_photos: boolean;
   show_geo_path: boolean;
@@ -135,6 +176,16 @@ export function visibilityFromFormatRow(row: PropertyShareFormatRow): PropertySh
     show_spec_parking: row.show_spec_parking,
     show_spec_condition: row.show_spec_condition,
     show_spec_amenities: row.show_spec_amenities,
+    show_spec_quincho: row.show_spec_quincho,
+    show_spec_pool: row.show_spec_pool,
+    show_spec_floor_count: row.show_spec_floor_count,
+    show_spec_patio: row.show_spec_patio,
+    show_spec_terrace: row.show_spec_terrace,
+    show_spec_laundry: row.show_spec_laundry,
+    show_spec_balcony: row.show_spec_balcony,
+    show_spec_garden: row.show_spec_garden,
+    show_spec_service_room: row.show_spec_service_room,
+    show_spec_elevator: row.show_spec_elevator,
     show_description: row.show_description,
     show_photos: row.show_photos,
     show_geo_path: row.show_geo_path,
@@ -155,6 +206,7 @@ export function parseShareVisibility(raw: unknown): PropertyShareVisibility {
   const o = raw as Record<string, unknown>;
   const b = (k: keyof PropertyShareVisibility) => (o[k] === false ? false : true);
   const legacySpecs = o.show_specs === false ? false : true;
+  const amenityStructFallback = triBool(o, "show_spec_amenities", legacySpecs);
 
   return {
     show_org_logo: b("show_org_logo"),
@@ -175,6 +227,16 @@ export function parseShareVisibility(raw: unknown): PropertyShareVisibility {
     show_spec_parking: triBool(o, "show_spec_parking", legacySpecs),
     show_spec_condition: triBool(o, "show_spec_condition", legacySpecs),
     show_spec_amenities: triBool(o, "show_spec_amenities", legacySpecs),
+    show_spec_quincho: triBool(o, "show_spec_quincho", amenityStructFallback),
+    show_spec_pool: triBool(o, "show_spec_pool", amenityStructFallback),
+    show_spec_floor_count: triBool(o, "show_spec_floor_count", amenityStructFallback),
+    show_spec_patio: triBool(o, "show_spec_patio", amenityStructFallback),
+    show_spec_terrace: triBool(o, "show_spec_terrace", amenityStructFallback),
+    show_spec_laundry: triBool(o, "show_spec_laundry", amenityStructFallback),
+    show_spec_balcony: triBool(o, "show_spec_balcony", amenityStructFallback),
+    show_spec_garden: triBool(o, "show_spec_garden", amenityStructFallback),
+    show_spec_service_room: triBool(o, "show_spec_service_room", amenityStructFallback),
+    show_spec_elevator: triBool(o, "show_spec_elevator", amenityStructFallback),
     show_description: b("show_description"),
     show_photos: b("show_photos"),
     show_geo_path: triBool(o, "show_geo_path", true),
@@ -263,7 +325,20 @@ export function buildSharePlainText(input: PublicPropertyPdfInput, v: PropertySh
   if (v.show_spec_bathrooms && pr.bathrooms != null) lines.push(`Baños: ${pr.bathrooms}`);
   if (v.show_spec_parking && pr.parking != null) lines.push(`Estacionamiento: ${pr.parking}`);
   if (v.show_spec_condition && pr.condition?.trim()) lines.push(`Condición: ${pr.condition.trim()}`);
-  if (v.show_spec_amenities && pr.amenity_tags?.trim()) lines.push(`Características: ${pr.amenity_tags.trim()}`);
+  const yn = (b: boolean | undefined) => (b ? "Sí" : "No");
+  if (v.show_spec_quincho) lines.push(`Quincho: ${yn(pr.has_quincho)}`);
+  if (v.show_spec_pool) lines.push(`Pileta: ${yn(pr.has_pool)}`);
+  if (v.show_spec_floor_count) {
+    lines.push(`Plantas: ${pr.floor_count != null ? String(pr.floor_count) : "—"}`);
+  }
+  if (v.show_spec_patio) lines.push(`Patio: ${yn(pr.has_patio)}`);
+  if (v.show_spec_terrace) lines.push(`Terraza: ${yn(pr.has_terrace)}`);
+  if (v.show_spec_laundry) lines.push(`Lavadero independiente: ${yn(pr.has_laundry)}`);
+  if (v.show_spec_balcony) lines.push(`Balcón: ${yn(pr.has_balcony)}`);
+  if (v.show_spec_garden) lines.push(`Jardín / parque: ${yn(pr.has_garden)}`);
+  if (v.show_spec_service_room) lines.push(`Dependencia: ${yn(pr.has_service_room)}`);
+  if (v.show_spec_elevator) lines.push(`Ascensor: ${yn(pr.has_elevator)}`);
+  if (v.show_spec_amenities && pr.amenity_tags?.trim()) lines.push(`Etiquetas: ${pr.amenity_tags.trim()}`);
 
   if (v.show_description && pr.description?.trim()) {
     lines.push("");

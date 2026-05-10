@@ -1,4 +1,5 @@
 import { DashboardLayout } from "./DashboardLayout";
+import { CurrencyCatalogProvider } from "../../contexts/CurrencyCatalogContext";
 import { useOrganization } from "../../contexts/OrganizationContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../ui/button";
@@ -36,5 +37,9 @@ export function DashboardShell() {
     );
   }
 
-  return <DashboardLayout />;
+  return (
+    <CurrencyCatalogProvider>
+      <DashboardLayout />
+    </CurrencyCatalogProvider>
+  );
 }

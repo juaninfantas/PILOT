@@ -36,6 +36,16 @@ export type PublicPropertyPdfInput = {
     description: string | null;
     amenity_tags: string | null;
     is_exclusive: boolean;
+    has_quincho?: boolean;
+    has_pool?: boolean;
+    floor_count?: number | null;
+    has_patio?: boolean;
+    has_terrace?: boolean;
+    has_laundry?: boolean;
+    has_balcony?: boolean;
+    has_garden?: boolean;
+    has_service_room?: boolean;
+    has_elevator?: boolean;
     geo_unit_id?: string | null;
     /** Precalculado en cliente con `geo_unit_path_labeled` cuando aplica. */
     geo_path_labeled?: string | null;
@@ -263,7 +273,18 @@ export async function generatePropertyBrochurePdfBlob(
   if (v.show_spec_rooms) leftFields.push({ label: "Ambientes", value: pr.rooms != null ? String(pr.rooms) : "—" });
   if (v.show_spec_parking) leftFields.push({ label: "Estacionamiento", value: pr.parking != null ? String(pr.parking) : "—" });
   if (v.show_spec_condition) leftFields.push({ label: "Estado / condición", value: dash(pr.condition) });
-  if (v.show_spec_amenities) leftFields.push({ label: "Características", value: dash(pr.amenity_tags) });
+  const yn = (b: boolean | undefined) => (b ? "Sí" : "No");
+  if (v.show_spec_quincho) leftFields.push({ label: "Quincho", value: yn(pr.has_quincho) });
+  if (v.show_spec_pool) leftFields.push({ label: "Pileta", value: yn(pr.has_pool) });
+  if (v.show_spec_floor_count) leftFields.push({ label: "Plantas", value: pr.floor_count != null ? String(pr.floor_count) : "—" });
+  if (v.show_spec_patio) leftFields.push({ label: "Patio", value: yn(pr.has_patio) });
+  if (v.show_spec_terrace) leftFields.push({ label: "Terraza", value: yn(pr.has_terrace) });
+  if (v.show_spec_laundry) leftFields.push({ label: "Lavadero indep.", value: yn(pr.has_laundry) });
+  if (v.show_spec_balcony) leftFields.push({ label: "Balcón", value: yn(pr.has_balcony) });
+  if (v.show_spec_garden) leftFields.push({ label: "Jardín / parque", value: yn(pr.has_garden) });
+  if (v.show_spec_service_room) leftFields.push({ label: "Dependencia", value: yn(pr.has_service_room) });
+  if (v.show_spec_elevator) leftFields.push({ label: "Ascensor", value: yn(pr.has_elevator) });
+  if (v.show_spec_amenities) leftFields.push({ label: "Etiquetas", value: dash(pr.amenity_tags) });
 
   const rightFields: { label: string; value: string }[] = [];
   if (v.show_price) rightFields.push({ label: "Precio público", value: priceStr });

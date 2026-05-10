@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import type { Database } from "../../types/database";
 import { geoLevelLabel } from "../../lib/geo-ui";
@@ -8,12 +8,17 @@ type GeoUnitRow = Database["public"]["Tables"]["GeoUnit"]["Row"];
 type GeoLevelDefRow = Database["public"]["Tables"]["GeoLevelDef"]["Row"];
 
 type Props = {
+  /** País del maestro geo (sincroniza al montar / cuando el padre lo cambia). */
   countryCode: string;
   /** geo_unit_id guardado en la propiedad (nodo más fino elegido). */
   value: string | null;
   disabled?: boolean;
   emitCityZone?: boolean;
   cityZoneFallback?: string;
+  /** Si hay más de uno, el desplegable País se puede cambiar (p. ej. AR / ES). */
+  availableCountries?: string[];
+  /** Al cambiar de país se limpia la selección en cascada (y el geo oculto hasta elegir de nuevo). */
+  onCountryCodeChange?: (code: string) => void;
 };
 
 function countryLabel(cc: string): string {
@@ -29,8 +34,29 @@ function countryLabel(cc: string): string {
  */
 type Selection = { id: string | null; name: string | null };
 
-export function GeoCascadingSelect({ countryCode, value, disabled, emitCityZone = false, cityZoneFallback = "" }: Props) {
-  const cc = countryCode.trim().toUpperCase();
+const DEFAULT_COUNTRIES = ["AR", "ES"];
+
+export function GeoCascadingSelect({
+  countryCode,
+  value,
+  disabled,
+  emitCityZone = false,
+  cityZoneFallback = "",
+  availableCountries = DEFAULT_COUNTRIES,
+  onCountryCodeChange,
+}: Props) {
+  const propCc = countryCode.trim().toUpperCase();
+  const countries = useMemo(
+    () => [...new Set(availableCountries.map((c) => c.trim().toUpperCase()).filter(Boolean))].sort(),
+    [availableCountries],
+  );
+  const [localCc, setLocalCc] = useState(propCc);
+  const cc = localCc;
+
+  useEffect(() => {
+    setLocalCc(propCc);
+  }, [propCc]);
+
   const [rootId, setRootId] = useState<string | null>(null);
   const [defs, setDefs] = useState<GeoLevelDefRow[]>([]);
   const [selections, setSelections] = useState<Selection[]>([]);
@@ -127,9 +153,20 @@ export function GeoCascadingSelect({ countryCode, value, disabled, emitCityZone 
             id={`geo-country-${cc}`}
             className="mt-1 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
             value={cc}
-            disabled
+            disabled={disabled || countries.length <= 1}
+            onChange={(e) => {
+              const next = e.target.value.trim().toUpperCase();
+              if (next === localCc || !countries.includes(next)) return;
+              setLocalCc(next);
+              setSelections([]);
+              onCountryCodeChange?.(next);
+            }}
           >
-            <option value={cc}>{countryLabel(cc)}</option>
+            {countries.map((c) => (
+              <option key={c} value={c}>
+                {countryLabel(c)}
+              </option>
+            ))}
           </select>
         </div>
         {depthDefs.map((def, slotIndex) => (
@@ -176,8 +213,9 @@ function GeoLevelSlot({
   const [options, setOptions] = useState<GeoUnitRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const label = geoLevelLabel(def);
-  const listId = `geo-list-${def.country_code}-${def.level_index}`;
 
   useEffect(() => {
     if (!parentId) {
@@ -210,39 +248,85 @@ function GeoLevelSlot({
   }, [selected.id, selected.name]);
 
   const selectedOption = useMemo(() => options.find((o) => o.id === selected.id) ?? null, [options, selected.id]);
+  const filteredOptions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((u) => u.name.toLowerCase().includes(q));
+  }, [options, query]);
+
+  useEffect(() => {
+    function onDocPointerDown(e: PointerEvent) {
+      if (!rootRef.current) return;
+      if (rootRef.current.contains(e.target as Node)) return;
+      setOpen(false);
+    }
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
+  }, []);
 
   return (
-    <div>
+    <div ref={rootRef} className="relative">
       <Label htmlFor={`geo-${def.country_code}-${def.level_index}`}>{label}</Label>
-      <input
-        id={`geo-${def.country_code}-${def.level_index}`}
-        className="mt-1 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
-        list={listId}
-        value={query}
-        disabled={disabled || loading || !parentId}
-        onChange={(e) => {
-          const v = e.target.value;
-          setQuery(v);
-          const hit = options.find((u) => u.name.toLowerCase() === v.trim().toLowerCase()) ?? null;
-          if (hit) onPick(hit.id, hit.name);
-          else if (!v.trim()) onPick(null, null);
-        }}
-        onBlur={() => {
-          if (!query.trim()) {
-            onPick(null, null);
-            return;
-          }
-          const hit = options.find((u) => u.name.toLowerCase() === query.trim().toLowerCase()) ?? null;
-          if (hit) onPick(hit.id, hit.name);
-          else setQuery(selectedOption?.name ?? "");
-        }}
-        placeholder={def.optional_level ? "(Opcional) Buscar…" : "Buscar y seleccionar…"}
-      />
-      <datalist id={listId}>
-        {options.map((u) => (
-          <option key={u.id} value={u.name} />
-        ))}
-      </datalist>
+      <div className="mt-1 flex items-center gap-2">
+        <input
+          id={`geo-${def.country_code}-${def.level_index}`}
+          className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
+          value={query}
+          disabled={disabled || loading || !parentId}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => {
+            const v = e.target.value;
+            setQuery(v);
+            setOpen(true);
+            const hit = options.find((u) => u.name.toLowerCase() === v.trim().toLowerCase()) ?? null;
+            if (hit) onPick(hit.id, hit.name);
+            else if (!v.trim()) onPick(null, null);
+          }}
+          onBlur={() => {
+            if (!query.trim()) {
+              onPick(null, null);
+              return;
+            }
+            const hit = options.find((u) => u.name.toLowerCase() === query.trim().toLowerCase()) ?? null;
+            if (hit) onPick(hit.id, hit.name);
+            else setQuery(selectedOption?.name ?? "");
+          }}
+          placeholder={def.optional_level ? "(Opcional) Buscar…" : "Buscar y seleccionar…"}
+        />
+        <button
+          type="button"
+          className="h-10 rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm text-[var(--muted)]"
+          disabled={disabled || loading || !parentId}
+          onClick={() => setOpen((v) => !v)}
+          aria-label={`Desplegar ${label}`}
+        >
+          ▼
+        </button>
+      </div>
+      {open && !disabled && parentId ? (
+        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg">
+          {filteredOptions.length ? (
+            filteredOptions.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                className={`block w-full px-3 py-2 text-left text-sm hover:bg-[var(--surface)] ${
+                  selected.id === u.id ? "bg-[var(--surface)] font-medium" : ""
+                }`}
+                onClick={() => {
+                  onPick(u.id, u.name);
+                  setQuery(u.name);
+                  setOpen(false);
+                }}
+              >
+                {u.name}
+              </button>
+            ))
+          ) : (
+            <p className="px-3 py-2 text-sm text-[var(--muted)]">Sin resultados</p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -13,7 +13,7 @@ const labels: Record<"WON" | "LOST" | "ONHOLD", { title: string; accent: string 
   ONHOLD: { title: "En pausa", accent: "border-zinc-500" },
 };
 
-export function ReportsFinalStatesPage() {
+export function ReportsFinalStatesPage({ embedded = false }: { embedded?: boolean }) {
   const [rows, setRows] = useState<Opp[]>([]);
 
   useEffect(() => {
@@ -36,12 +36,35 @@ export function ReportsFinalStatesPage() {
 
   return (
     <RequirePermission slug="view_reports">
-      <NeoPageShell>
-        <NeoPageHeader
-          title="Estados finales"
-          subtitle="Vista de tablero para ganadas, perdidas y en pausa. Solo lectura y seguimiento; para editar abrí cada oportunidad."
-        />
-        <div className="grid gap-4 md:grid-cols-3">
+      <NeoPageShell className={embedded ? "scroll-mt-10 space-y-4 border-t border-[var(--jif-line)] pt-10" : undefined}>
+        {embedded ? (
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="font-neo text-xl font-semibold text-[var(--foreground)]">Estados finales</h2>
+              <p className="jif-caps jif-dim mt-2 max-w-2xl font-normal" style={{ fontSize: "0.65rem" }}>
+                Ganadas, perdidas y en pausa. Para editar, abrí cada oportunidad.
+              </p>
+            </div>
+            <Link
+              to="/dashboard/reports/final-states"
+              className="jif-caps shrink-0 text-[0.65rem] text-[var(--accent)] hover:underline"
+            >
+              Ver pantalla completa →
+            </Link>
+          </div>
+        ) : (
+          <NeoPageHeader
+            title="Estados finales"
+            subtitle="Vista de tablero para ganadas, perdidas y en pausa. Solo lectura y seguimiento; para editar abrí cada oportunidad."
+          />
+        )}
+        <div
+          className={
+            embedded
+              ? "grid max-h-[min(70vh,640px)] gap-4 overflow-y-auto overscroll-contain pr-1 md:grid-cols-3"
+              : "grid gap-4 md:grid-cols-3"
+          }
+        >
           {(["WON", "LOST", "ONHOLD"] as const).map((key) => (
             <NeoCard key={key} className={`p-4 ${labels[key].accent}`}>
               <h2 className="font-neo text-lg font-black uppercase tracking-tight text-[var(--foreground)]">{labels[key].title}</h2>

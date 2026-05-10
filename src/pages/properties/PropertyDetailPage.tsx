@@ -8,12 +8,14 @@ import {
   ImageUp,
   Loader2,
   Menu,
+  Pencil,
   Share2,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { useCurrencyCatalog } from "../../contexts/CurrencyCatalogContext";
 import { useActiveOrganization } from "../../contexts/OrganizationContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { hasPermission } from "../../lib/permissions";
@@ -24,13 +26,17 @@ import { Label } from "../../components/ui/label";
 import { PhotoLightbox } from "../../components/ui/photo-lightbox";
 import { Modal } from "../../components/ui/modal";
 import { PropertyDetailEditForm } from "./PropertyDetailEditForm";
+import { PropertyShareModal } from "../../components/properties/PropertyShareModal";
+import { parseBoolFormValue, parseOptionalFloorCount } from "../../components/properties/PropertyCommercialExteriorFields";
+import type { PublicPropertyPdfInput } from "../../lib/property-public-pdf";
+import { useMdUp } from "../../hooks/useMediaQuery";
+import { MOBILE_DOCK_OFFSET } from "../../components/layout/MobileBottomNav";
 import { CurrencySelect } from "../../components/ui/currency-select";
-import { geocodeAddress } from "../../lib/geocode";
+import { PropertyAmountDateFormFields } from "../../components/property/PropertyAmountDateFormFields";
 import { PRICE_KIND_LABEL } from "../../lib/crm-labels";
 import { normalizeCurrencyCode } from "../../lib/currencies";
 import { combineLocalDateTime, isoToDateAndTime, todayDateInputValue } from "../../lib/datetime-form";
 import { managementCodesFromForm, serializeManagement } from "../../lib/property-management";
-import { TIME_OPTIONS } from "../../lib/time-options";
 import type { AppraisalSource, Database, ListingStatus, PropertyKind } from "../../types/database";
 
 const EXTERNAL_APPRAISER_OTHER = "__OTHER__";
@@ -44,9 +50,6 @@ function isRecognizedImageFile(f: File): boolean {
   if (!f.type && looksLikeImageFilename(f.name)) return true;
   return false;
 }
-import { PropertyShareModal } from "../../components/properties/PropertyShareModal";
-import type { PublicPropertyPdfInput } from "../../lib/property-public-pdf";
-import { useMdUp } from "../../hooks/useMediaQuery";
 
 type Property = Database["public"]["Tables"]["Property"]["Row"];
 type PriceRow = Database["public"]["Tables"]["PropertyPrice"]["Row"];
@@ -87,6 +90,7 @@ function CollapsibleCard({ title, subtitle, children }: { title: string; subtitl
 
 export function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { codeSet } = useCurrencyCatalog();
   const location = useLocation();
   const nav = useNavigate();
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -312,27 +316,10 @@ export function PropertyDetailPage() {
     }
     const kind = String(fd.get("kind") ?? "OTHER") as PropertyKind;
     const listing_status = String(fd.get("listing_status") ?? "AVAILABLE") as ListingStatus;
-    let lat = fd.get("lat") ? Number(fd.get("lat")) : null;
-    let lng = fd.get("lng") ? Number(fd.get("lng")) : null;
     const address = String(fd.get("address") ?? "").trim() || null;
     const postal_code = String(fd.get("postal_code") ?? "").trim() || null;
     const geoRaw = String(fd.get("geo_unit_id") ?? "").trim();
     const geo_unit_id = geoRaw ? geoRaw : null;
-    if (lat == null || Number.isNaN(lat) || lng == null || Number.isNaN(lng)) {
-      let geoLine: string | null = null;
-      if (geo_unit_id) {
-        const { data } = await supabase.rpc("geo_unit_path_line", { p_unit_id: geo_unit_id });
-        geoLine = typeof data === "string" ? data : null;
-      }
-      const q = [address, postal_code, city_zone, geoLine].filter((x) => (x ?? "").trim()).join(", ");
-      if (q.trim()) {
-        const g = await geocodeAddress(q);
-        if (g) {
-          lat = g.lat;
-          lng = g.lng;
-        }
-      }
-    }
     setMainSaving(true);
     const { data: updatedRow, error: ue } = await supabase
       .from("Property")
@@ -348,13 +335,21 @@ export function PropertyDetailPage() {
         rooms: fd.get("rooms") ? parseInt(String(fd.get("rooms")), 10) : null,
         bathrooms: fd.get("bathrooms") ? parseInt(String(fd.get("bathrooms")), 10) : null,
         parking: fd.get("parking") ? parseInt(String(fd.get("parking")), 10) : null,
+        has_quincho: parseBoolFormValue(fd.get("has_quincho")),
+        has_pool: parseBoolFormValue(fd.get("has_pool")),
+        floor_count: parseOptionalFloorCount(fd.get("floor_count")),
+        has_patio: parseBoolFormValue(fd.get("has_patio")),
+        has_terrace: parseBoolFormValue(fd.get("has_terrace")),
+        has_laundry: parseBoolFormValue(fd.get("has_laundry")),
+        has_balcony: parseBoolFormValue(fd.get("has_balcony")),
+        has_garden: parseBoolFormValue(fd.get("has_garden")),
+        has_service_room: parseBoolFormValue(fd.get("has_service_room")),
+        has_elevator: parseBoolFormValue(fd.get("has_elevator")),
         condition: String(fd.get("condition") ?? "").trim() || null,
         description: String(fd.get("description") ?? "").trim() || null,
         is_exclusive: fd.get("is_exclusive") === "on",
         management: serializeManagement(managementCodesFromForm(fd.getAll("management"))) || null,
         amenity_tags: String(fd.get("amenity_tags") ?? "").trim() || null,
-        lat,
-        lng,
         listing_status,
       })
       .eq("id", id)
@@ -383,12 +378,10 @@ export function PropertyDetailPage() {
     const kindRaw = String(fd.get("kind") ?? "LISTING_PUBLIC");
     const kind = (kindRaw === "LISTING_RESERVED" ? "LISTING_RESERVED" : "LISTING_PUBLIC") as "LISTING_PUBLIC" | "LISTING_RESERVED";
     const dateStr = String(fd.get("effective_date") ?? "").trim();
-    const timeStr = String(fd.get("effective_time") ?? "09:00").trim();
+    /** Solo fecha en UI; se guarda mediodía hora local. */
     const effective_at =
-      combineLocalDateTime(dateStr, timeStr) ??
-      editingPrice?.effective_at ??
-      new Date().toISOString();
-    const currency = normalizeCurrencyCode(String(fd.get("currency") ?? "USD"));
+      combineLocalDateTime(dateStr, "12:00") ?? editingPrice?.effective_at ?? new Date().toISOString();
+    const currency = normalizeCurrencyCode(String(fd.get("currency") ?? "USD"), codeSet);
     const payload = {
       property_id: id,
       amount: String(amount),
@@ -438,7 +431,7 @@ export function PropertyDetailPage() {
       combineLocalDateTime(dateStr, "00:00") ??
       editingAppraisal?.appraised_at ??
       new Date().toISOString();
-    const currency = normalizeCurrencyCode(String(fd.get("currency") ?? "USD"));
+    const currency = normalizeCurrencyCode(String(fd.get("currency") ?? "USD"), codeSet);
 
     let appraiser_id: string | null = null;
     let appraiser_name: string | null = null;
@@ -628,6 +621,16 @@ export function PropertyDetailPage() {
         rooms: property.rooms,
         bathrooms: property.bathrooms,
         parking: property.parking,
+        has_quincho: property.has_quincho,
+        has_pool: property.has_pool,
+        floor_count: property.floor_count,
+        has_patio: property.has_patio,
+        has_terrace: property.has_terrace,
+        has_laundry: property.has_laundry,
+        has_balcony: property.has_balcony,
+        has_garden: property.has_garden,
+        has_service_room: property.has_service_room,
+        has_elevator: property.has_elevator,
         condition: property.condition,
         listing_status: property.listing_status,
         description: property.description,
@@ -816,7 +819,7 @@ export function PropertyDetailPage() {
             <th className="border-b border-[var(--border)] p-2">Importe</th>
             <th className="border-b border-[var(--border)] p-2">Tipo</th>
             {pricesShowActionsCol ? (
-              <th className="border-b border-[var(--border)] p-2">Acciones</th>
+              <th className="border-b border-[var(--border)] p-2 text-center">Acciones</th>
             ) : null}
           </tr>
         </thead>
@@ -843,37 +846,40 @@ export function PropertyDetailPage() {
                   )}
                 </td>
                 {pricesShowActionsCol ? (
-                  <td className="min-w-0 border-b border-[var(--border)] p-2 align-middle">
-                    {pr.kind === "OFFER_OPPORTUNITY" ? (
-                      oppHref && offerInfo ? (
-                        <Link
-                          to={oppHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex w-full min-w-0 max-w-full items-center gap-1 text-[var(--accent)] hover:underline"
-                          title={`Abrir en pestaña nueva: ${offerInfo.title}`}
+                  <td className="min-w-0 border-b border-[var(--border)] p-2 align-middle text-center">
+                    <div className="flex min-h-[2.25rem] items-center justify-center">
+                      {pr.kind === "OFFER_OPPORTUNITY" ? (
+                        oppHref && offerInfo ? (
+                          <Link
+                            to={oppHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex max-w-full min-w-0 items-center justify-center gap-1 text-[var(--accent)] hover:underline"
+                            title={`Abrir en pestaña nueva: ${offerInfo.title}`}
+                          >
+                            <span className="truncate font-medium">{offerInfo.title}</span>
+                            <ArrowUpRight className="size-3.5 shrink-0 opacity-70" aria-hidden strokeWidth={2} />
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-[var(--muted)]">—</span>
+                        )
+                      ) : canEdit ? (
+                        <button
+                          type="button"
+                          className="rounded-md p-2 text-[var(--accent)] hover:bg-stone-900/5"
+                          title="Editar precio"
+                          aria-label="Editar precio"
+                          onClick={() => {
+                            setEditingPrice(pr);
+                            setPriceModalOpen(true);
+                          }}
                         >
-                          <span className="truncate font-medium">{offerInfo.title}</span>
-                          <ArrowUpRight className="size-3.5 shrink-0 opacity-70" aria-hidden strokeWidth={2} />
-                        </Link>
+                          <Pencil className="size-4" strokeWidth={1.75} />
+                        </button>
                       ) : (
-                        <span className="text-xs text-[var(--muted)]">—</span>
-                      )
-                    ) : canEdit ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setEditingPrice(pr);
-                          setPriceModalOpen(true);
-                        }}
-                      >
-                        Editar
-                      </Button>
-                    ) : (
-                      <span className="text-[var(--muted)]">—</span>
-                    )}
+                        <span className="text-[var(--muted)]">—</span>
+                      )}
+                    </div>
                   </td>
                 ) : null}
               </tr>
@@ -927,7 +933,7 @@ export function PropertyDetailPage() {
             <th className="border-b border-[var(--border)] p-2">Origen</th>
             <th className="border-b border-[var(--border)] p-2">Tasador</th>
             {canEdit ? (
-              <th className="border-b border-[var(--border)] p-2">Acciones</th>
+              <th className="border-b border-[var(--border)] p-2 text-center">Acciones</th>
             ) : null}
           </tr>
         </thead>
@@ -949,18 +955,21 @@ export function PropertyDetailPage() {
                   : peopleMap.get(a.appraiser_id ?? "") ?? a.appraiser_name ?? "—"}
               </td>
               {canEdit ? (
-                <td className="min-w-0 border-b border-[var(--border)] p-2 align-middle">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingAppraisal(a);
-                      setAppraisalModalOpen(true);
-                    }}
-                  >
-                    Editar
-                  </Button>
+                <td className="min-w-0 border-b border-[var(--border)] p-2 align-middle text-center">
+                  <div className="flex min-h-[2.25rem] items-center justify-center">
+                    <button
+                      type="button"
+                      className="rounded-md p-2 text-[var(--accent)] hover:bg-stone-900/5"
+                      title="Editar tasación"
+                      aria-label="Editar tasación"
+                      onClick={() => {
+                        setEditingAppraisal(a);
+                        setAppraisalModalOpen(true);
+                      }}
+                    >
+                      <Pencil className="size-4" strokeWidth={1.75} />
+                    </button>
+                  </div>
                 </td>
               ) : null}
             </tr>
@@ -1010,7 +1019,7 @@ export function PropertyDetailPage() {
 
   return (
     <RequirePermission slug="view_properties">
-      <div className="space-y-8">
+      <div className="space-y-8 max-lg:pb-28">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
           <div className="hidden min-w-0 lg:block">
             <p className="text-sm text-[var(--muted)]">
@@ -1087,14 +1096,18 @@ export function PropertyDetailPage() {
         ) : null}
 
         {!mdUp && mobileMoreOpen && canEdit && property ? (
-          <div className="fixed inset-0 z-[60] flex flex-col bg-[var(--background)] lg:hidden">
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
-              <span className="text-sm font-semibold">Datos, precios y documentos</span>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setMobileMoreOpen(false)} aria-label="Cerrar panel">
+          <div className="fixed inset-0 z-[60] flex flex-col bg-[var(--background)] pt-[env(safe-area-inset-top)] lg:hidden">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Información</p>
+                <h2 className="mt-1 text-base font-semibold leading-snug">Datos de la propiedad</h2>
+                <p className="mt-1 text-xs text-[var(--muted)]">General, ubicación, comercial y contactos. Deslizá las pestañas si no entran en pantalla.</p>
+              </div>
+              <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={() => setMobileMoreOpen(false)} aria-label="Cerrar panel">
                 <X className="size-5" strokeWidth={1.75} />
               </Button>
             </div>
-            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-4">
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-3 py-4 sm:px-4">
               <PropertyDetailEditForm
                 property={property}
                 editFormKey={editFormKey}
@@ -1275,52 +1288,25 @@ export function PropertyDetailPage() {
             id="price-form"
             key={editingPrice?.id ?? "new-price"}
             onSubmit={savePrice}
-            className="grid gap-3"
+            className="space-y-4"
           >
-            <Input name="amount" type="number" step="any" placeholder="Importe" required defaultValue={editingPrice?.amount ?? ""} />
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label htmlFor="effective_date">Fecha vigencia</Label>
-                <Input
-                  id="effective_date"
-                  name="effective_date"
-                  type="date"
-                  required
-                  className="mt-1"
-                  defaultValue={
-                    isoToDateAndTime(editingPrice?.effective_at).date || todayDateInputValue()
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="effective_time">Hora</Label>
-                <select
-                  id="effective_time"
-                  name="effective_time"
-                  defaultValue={isoToDateAndTime(editingPrice?.effective_at).time}
-                  className="mt-1 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm tabular-nums"
-                >
-                  {TIME_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="price-currency">Moneda</Label>
-              <CurrencySelect id="price-currency" name="currency" defaultValue={editingPrice?.currency ?? "USD"} className="mt-1" />
-            </div>
-            <select
-              name="kind"
-              defaultValue={editingPrice?.kind ?? "LISTING_PUBLIC"}
-              className="h-10 rounded-lg border border-[var(--border)] bg-[#fffcf7] px-2 text-sm"
-            >
-              <option value="LISTING_PUBLIC">Público</option>
-              <option value="LISTING_RESERVED">Reservado</option>
-            </select>
-            <Input name="note" placeholder="Nota" defaultValue={editingPrice?.note ?? ""} />
+            <PropertyAmountDateFormFields
+              variant="listing_price"
+              amountInputId="price-form-amount"
+              currencyInputId="price-currency"
+              dateInputId="effective_date"
+              noteInputId="price-form-note"
+              dateFieldName="effective_date"
+              noteFieldName="note"
+              dateLabel="Fecha vigencia"
+              notePlaceholder="Nota"
+              defaultAmount={editingPrice?.amount ?? ""}
+              defaultDate={isoToDateAndTime(editingPrice?.effective_at).date || todayDateInputValue()}
+              defaultCurrency={editingPrice?.currency ?? "USD"}
+              defaultNote={editingPrice?.note ?? ""}
+              defaultKind={editingPrice?.kind === "LISTING_RESERVED" ? "LISTING_RESERVED" : "LISTING_PUBLIC"}
+              kindSelectId="price-form-kind"
+            />
           </form>
         </Modal>
 
@@ -1453,7 +1439,14 @@ export function PropertyDetailPage() {
           </form>
         </Modal>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 pt-4">
+        <div
+          className={
+            mdUp
+              ? "flex flex-wrap items-center justify-end gap-2 pt-4"
+              : "fixed inset-x-0 z-[29] flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--background)] px-4 py-3 shadow-[0_-8px_28px_rgba(0,0,0,0.06)]"
+          }
+          style={!mdUp ? { bottom: MOBILE_DOCK_OFFSET } : undefined}
+        >
           <Button type="button" variant="ghost" onClick={handleBack}>
             Volver
           </Button>

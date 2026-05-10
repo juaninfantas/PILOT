@@ -38,8 +38,9 @@ export function BuyerCriteriaBuilder({ rows, onChange }: Props) {
       <div>
         <h3 className="text-lg font-medium leading-snug text-[var(--foreground)]">Criterios sobre propiedades (scoring)</h3>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
-          Elegí un atributo como en la ficha de la propiedad y el valor buscado. Podés sumar varios requisitos; el score promedia
-          qué tanto cumple cada uno.
+          El rango de precio min/máx (arriba, en la ficha de la persona interesada) forma parte del scoring junto con estos
+          criterios. Acá elegí un atributo como en la ficha de la propiedad y el valor buscado; podés sumar varios requisitos y el
+          score promedia qué tanto cumple cada uno.
         </p>
       </div>
 

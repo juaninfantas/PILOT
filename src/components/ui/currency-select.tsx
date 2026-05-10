@@ -1,4 +1,5 @@
-import { CURRENCIES, DEFAULT_CURRENCY_CODE, normalizeCurrencyCode } from "../../lib/currencies";
+import { DEFAULT_CURRENCY_CODE, normalizeCurrencyCode } from "../../lib/currencies";
+import { useCurrencyCatalog } from "../../contexts/CurrencyCatalogContext";
 import { cn } from "../../lib/utils";
 
 type CurrencySelectProps = {
@@ -11,13 +12,14 @@ type CurrencySelectProps = {
 };
 
 export function CurrencySelect({ id, name, defaultValue, className, value, onChange }: CurrencySelectProps) {
+  const { options, codeSet } = useCurrencyCatalog();
   const isControlled = value !== undefined;
-  const dv = normalizeCurrencyCode(defaultValue ?? DEFAULT_CURRENCY_CODE);
+  const dv = normalizeCurrencyCode(defaultValue ?? DEFAULT_CURRENCY_CODE, codeSet);
   return (
     <select
       id={id}
       name={name}
-      value={isControlled ? normalizeCurrencyCode(value) : undefined}
+      value={isControlled ? normalizeCurrencyCode(value, codeSet) : undefined}
       defaultValue={isControlled ? undefined : dv}
       onChange={onChange}
       className={cn(
@@ -25,7 +27,7 @@ export function CurrencySelect({ id, name, defaultValue, className, value, onCha
         className,
       )}
     >
-      {CURRENCIES.map((c) => (
+      {options.map((c) => (
         <option key={c.code} value={c.code}>
           {c.code} — {c.label}
         </option>

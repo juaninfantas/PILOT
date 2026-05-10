@@ -71,6 +71,9 @@ export const ReportsPage = lazy(() => import("../pages/ReportsPage").then((m) =>
 export const ReportsOverviewPage = lazy(() =>
   import("../pages/reports/ReportsOverviewPage").then((m) => ({ default: m.ReportsOverviewPage })),
 );
+export const ReportsPriceGeoPage = lazy(() =>
+  import("../pages/reports/ReportsPriceGeoPage").then((m) => ({ default: m.ReportsPriceGeoPage })),
+);
 export const ReportsPipelinePage = lazy(() =>
   import("../pages/reports/ReportsPipelinePage").then((m) => ({ default: m.ReportsPipelinePage })),
 );
