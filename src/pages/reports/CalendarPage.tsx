@@ -592,7 +592,7 @@ export function CalendarPage({ embedded = false }: { embedded?: boolean }) {
   }, [activities, events, visibleRange.start, visibleRange.end]);
 
   return (
-    <RequirePermission slug="view_reports">
+    <RequirePermission slug="view_calendar">
       <div
         className={
           embedded

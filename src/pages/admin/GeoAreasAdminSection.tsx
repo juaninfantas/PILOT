@@ -293,7 +293,7 @@ export function GeoAreasAdminSection({ embedded = false }: GeoAreasAdminSectionP
             <strong>Nuevo país</strong> registra la configuración (niveles y etiquetas) y la unidad raíz del país.{" "}
             <strong>Nueva unidad</strong> permite ir cargando la jerarquía (provincias, municipios, etc.) bajo esa estructura.
             Las etiquetas también se pueden afinar después con el país seleccionado. Es un <strong>maestro compartido</strong> para
-            todas las inmobiliarias; usalo con cuidado en entornos multi-tenant.
+            todas las inmobiliarias; usalo con cuidado cuando compartís datos entre varias cuentas u organizaciones.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">

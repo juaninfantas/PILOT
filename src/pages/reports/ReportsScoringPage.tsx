@@ -177,7 +177,7 @@ export function ReportsScoringPage() {
   }
 
   return (
-    <RequirePermission slug="view_reports">
+    <RequirePermission slug="view_opportunities">
       <div className="jif-page space-y-8">
         <header className="border-b border-[var(--jif-line)] pb-6">
           <div>

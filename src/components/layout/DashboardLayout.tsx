@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 import { Menu } from "lucide-react";
+import { PilotLogo } from "../brand/PilotLogo";
 import { Sidebar } from "./Sidebar";
 import { StaffTenantSwitcher } from "./StaffTenantSwitcher";
 import { MobileBottomNav } from "./MobileBottomNav";
@@ -16,8 +17,8 @@ export function DashboardLayout() {
   const perms = permissions ?? [];
   const showMobileDock = useMemo(
     () =>
-      hasPermission(perms, "view_dashboard") ||
-      hasPermission(perms, "view_reports") ||
+      hasPermission(perms, "view_notes") ||
+      hasPermission(perms, "view_calendar") ||
       hasPermission(perms, "view_properties"),
     [perms],
   );
@@ -50,10 +51,10 @@ export function DashboardLayout() {
         <header className="fixed left-0 right-0 top-0 z-30 flex min-h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-2 border-b border-[var(--jif-line)] bg-[var(--background)] px-3 pt-[env(safe-area-inset-top)] md:hidden">
           <Link
             to="/dashboard"
-            className="shrink-0 font-pilot-logo text-xl leading-none text-[var(--foreground)] outline-offset-2 hover:opacity-90"
+            className="shrink-0 outline-offset-2 hover:opacity-90"
             aria-label="Pilot inicio"
           >
-            Pilot.
+            <PilotLogo className="h-7 w-7" />
           </Link>
           <span className="min-w-0 flex-1" aria-hidden />
           <Button

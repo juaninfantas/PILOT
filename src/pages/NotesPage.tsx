@@ -193,7 +193,7 @@ export function NotesPage() {
   }
 
   return (
-    <RequirePermission slug="view_dashboard">
+    <RequirePermission slug="view_notes">
       <div className="jif-page flex min-h-[calc(100dvh-7.5rem)] flex-col gap-8">
         <header className="border-b border-[var(--jif-line)] pb-6">
           <div>

@@ -43,7 +43,7 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
   const [lastCreated, setLastCreated] = useState<{ slug: string; code: string } | null>(null);
 
   const [attachEmail, setAttachEmail] = useState("");
-  const [attachAccess, setAttachAccess] = useState<"admin" | "consulta">("admin");
+  const [attachAccess, setAttachAccess] = useState<"admin" | "agente" | "consulta">("agente");
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
   const loadTenants = useCallback(async () => {
@@ -143,7 +143,7 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
     }
   }
 
-  async function setMemberAccess(m: MemberRow, access: "admin" | "consulta") {
+  async function setMemberAccess(m: MemberRow, access: "admin" | "agente" | "consulta") {
     if (!selectedId || busy || m.user_id === user?.id) return;
     setBusy(true);
     const { error } = await supabase.rpc("staff_set_tenant_member_access", {
@@ -216,11 +216,11 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
             </Button>
             <Button
               type="submit"
-              form="create-tenant-form"
+              form="create-inmobiliaria-form"
               disabled={busy}
               className="jif-btn-primary inline-flex h-10 min-w-10 items-center justify-center px-3"
-              aria-label="Crear tenant"
-              title="Crear tenant"
+              aria-label="Crear inmobiliaria"
+              title="Crear inmobiliaria"
             >
               {busy ? <Loader2 className="size-5 shrink-0 animate-spin" /> : <Save className="size-5 shrink-0" />}
             </Button>
@@ -231,7 +231,7 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
           Slug único y nombre visible. Se genera un código de invitación para el alta en registro, o podés fijar uno propio.
           Se copian funnels desde la organización <code className="text-xs">default</code>.
         </p>
-        <form id="create-tenant-form" onSubmit={(ev) => void createTenant(ev)} className="grid gap-4 sm:grid-cols-2">
+        <form id="create-inmobiliaria-form" onSubmit={(ev) => void createTenant(ev)} className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-1">
             <Label htmlFor="nt-slug">Slug (URL) *</Label>
             <Input
@@ -272,11 +272,11 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="jif-caps jif-dim" style={{ fontSize: "0.65rem" }}>
-                Tenant
+                Inmobiliaria
               </p>
               <h3 className="mt-2 text-lg font-semibold">Inmobiliarias (Pilot)</h3>
               <p className="mt-2 max-w-3xl text-sm text-[var(--muted)]">
-                Alta de inmobiliarias, códigos de invitación y usuarios por tenant. Sólo personal Pilot.
+                Alta de inmobiliarias, códigos de invitación y usuarios por inmobiliaria. Sólo personal Pilot.
               </p>
             </div>
             <Button
@@ -287,7 +287,7 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
                 setCreateModalOpen(true);
               }}
             >
-              Crear tenant
+              Crear inmobiliaria
             </Button>
           </div>
         ) : (
@@ -306,14 +306,14 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
                 setCreateModalOpen(true);
               }}
             >
-              Crear tenant
+              Crear inmobiliaria
             </Button>
           </div>
         )}
         {lastCreated ? (
           <div className="rounded-lg border border-[var(--jif-gold)]/40 bg-[#fffcf7] p-4 text-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="font-medium text-[var(--foreground)]">Tenant creado</p>
+              <p className="font-medium text-[var(--foreground)]">Inmobiliaria creada</p>
               <Button type="button" variant="ghost" size="sm" className="h-8 shrink-0 text-xs" onClick={() => setLastCreated(null)}>
                 Cerrar
               </Button>
@@ -380,7 +380,7 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
 
       {selectedId ? (
         <section className="space-y-6 rounded-xl border border-[var(--jif-line)] bg-[var(--card)] p-6">
-          <h3 className="text-base font-semibold">Usuarios del tenant</h3>
+          <h3 className="text-base font-semibold">Usuarios de la inmobiliaria</h3>
           {inviteCode ? (
             <p className="text-sm text-[var(--muted)]">
               Código de invitación actual:{" "}
@@ -405,10 +405,11 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
               <select
                 id="att-acc"
                 value={attachAccess}
-                onChange={(e) => setAttachAccess(e.target.value as "admin" | "consulta")}
+                onChange={(e) => setAttachAccess(e.target.value as "admin" | "agente" | "consulta")}
                 className="mt-1 flex h-10 rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm"
               >
                 <option value="admin">Administrador</option>
+                <option value="agente">Agente</option>
                 <option value="consulta">Solo consulta</option>
               </select>
             </div>
@@ -456,6 +457,15 @@ export function AdminTenantsSection({ embedded = false }: AdminTenantsSectionPro
                           onClick={() => void setMemberAccess(m, "admin")}
                         >
                           Admin
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy || m.user_id === user?.id || m.access_group_slug === "agentes"}
+                          onClick={() => void setMemberAccess(m, "agente")}
+                        >
+                          Agente
                         </Button>
                         <Button
                           type="button"

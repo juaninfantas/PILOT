@@ -95,6 +95,9 @@ export interface Database {
           used_at: string | null;
           used_by_user_id: string | null;
           revoked_at: string | null;
+          target_access: string;
+          target_person_id: string | null;
+          reserved_email: string | null;
         };
         Insert: never;
       };
@@ -431,6 +434,7 @@ export interface Database {
           tax_id: string | null;
           trade_name: string | null;
           linked_user_id: string | null;
+          created_by_id: string | null;
           created_at: string;
           updated_at: string;
           organization_id: string;
@@ -447,6 +451,7 @@ export interface Database {
           tax_id?: string | null;
           trade_name?: string | null;
           linked_user_id?: string | null;
+          created_by_id?: string | null;
         };
       };
       PersonProfile: {
@@ -490,6 +495,7 @@ export interface Database {
           estimated_value: string | null;
           probability: number | null;
           creation_mode: OpportunityCreationMode;
+          created_by_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -505,6 +511,7 @@ export interface Database {
           estimated_value?: string | null;
           probability?: number | null;
           creation_mode?: OpportunityCreationMode;
+          created_by_id?: string | null;
         };
       };
       Funnel: {
@@ -750,6 +757,7 @@ export interface Database {
           name: string;
           slug: string;
           description: string | null;
+          is_system: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -760,6 +768,9 @@ export interface Database {
           name: string;
           slug: string;
           description: string | null;
+          module: string | null;
+          resource: string | null;
+          action: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -774,6 +785,12 @@ export interface Database {
       has_permission: { Args: { p_slug: string }; Returns: boolean };
       assert_organization_slug_matches_membership: { Args: { p_slug: string }; Returns: boolean };
       attach_organization_membership: { Args: { p_slug: string; p_invite: string }; Returns: undefined };
+      claim_organization_invite_for_signup: {
+        Args: { p_slug: string; p_invite: string; p_email: string };
+        Returns: undefined;
+      };
+      release_organization_invite_claim: { Args: { p_slug: string; p_email: string }; Returns: undefined };
+      finalize_organization_membership_from_signup: { Args: { p_slug: string }; Returns: undefined };
       get_my_organization: {
         Args: Record<string, never>;
         Returns: {
@@ -805,9 +822,73 @@ export interface Database {
         };
         Returns: undefined;
       };
-      generate_organization_invite: {
+      list_organization_invites: {
         Args: Record<string, never>;
-        Returns: { invite_id: string; code: string; expires_at: string }[];
+        Returns: (Database["public"]["Tables"]["OrganizationInvite"]["Row"] & {
+          target_person_name: string | null;
+        })[];
+      };
+      revoke_organization_invite: {
+        Args: { p_invite_id: string };
+        Returns: undefined;
+      };
+      generate_organization_invite: {
+        Args: { p_target_access?: string; p_target_person_id?: string | null };
+        Returns: {
+          invite_id: string;
+          code: string;
+          expires_at: string;
+          target_access: string;
+          target_person_id: string | null;
+        }[];
+      };
+      list_org_members: {
+        Args: Record<string, never>;
+        Returns: {
+          user_id: string;
+          email: string | null;
+          name: string | null;
+          is_active: boolean;
+          access_group_slug: string;
+          role_id: string | null;
+          role_name: string | null;
+          role_slug: string | null;
+          linked_person_id: string | null;
+          linked_person_name: string | null;
+        }[];
+      };
+      list_roles_admin: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          name: string;
+          slug: string;
+          description: string | null;
+          is_system: boolean;
+          member_count: number;
+        }[];
+      };
+      get_role_permission_slugs: { Args: { p_role_id: string }; Returns: string[] };
+      save_role_permissions: { Args: { p_role_id: string; p_slugs: string[] }; Returns: undefined };
+      create_custom_role: {
+        Args: { p_name: string; p_slug: string; p_description?: string | null };
+        Returns: string;
+      };
+      update_role_profile: {
+        Args: { p_role_id: string; p_name: string; p_description?: string | null };
+        Returns: undefined;
+      };
+      delete_custom_role: { Args: { p_role_id: string }; Returns: undefined };
+      set_org_member_role: { Args: { p_user_id: string; p_role_id: string }; Returns: undefined };
+      list_org_agent_persons_unlinked: {
+        Args: Record<string, never>;
+        Returns: { id: string; name: string; email: string | null }[];
+      };
+      set_org_member_active: { Args: { p_user_id: string; p_is_active: boolean }; Returns: undefined };
+      set_org_member_access: { Args: { p_user_id: string; p_access: string }; Returns: undefined };
+      link_org_person_to_user: {
+        Args: { p_person_id: string; p_user_id: string | null };
+        Returns: undefined;
       };
       create_property_public_share: {
         Args: { p_property_id: string; p_days?: number; p_share_format_id?: string | null };

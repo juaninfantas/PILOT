@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { useActiveOrganization } from "../../contexts/OrganizationContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { hasPermission } from "../../lib/permissions";
+import { userLabelMap, type UserLabelRow } from "../../lib/created-by-display";
 import { RequirePermission } from "../../components/RequirePermission";
 import { Button } from "../../components/ui/button";
 import { PropertiesCsvImport } from "../../components/properties/PropertiesCsvImport";
@@ -45,7 +46,9 @@ export function PropertiesPage() {
   const org = useActiveOrganization();
   const { permissions } = useAuth();
   const canManage = hasPermission(permissions, "manage_properties");
+  const canSeeAuthors = hasPermission(permissions, "manage_users");
   const [rows, setRows] = useState<Property[]>([]);
+  const [authorLabels, setAuthorLabels] = useState<Map<string, string>>(new Map());
   const [coverUrls, setCoverUrls] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "grid">("grid");
@@ -70,6 +73,15 @@ export function PropertiesPage() {
       }
       const list = (data as Property[]) ?? [];
       setRows(list);
+      if (canSeeAuthors) {
+        const authorIds = [...new Set(list.map((p) => p.created_by_id).filter(Boolean))] as string[];
+        if (authorIds.length > 0) {
+          const { data: users } = await supabase.from("User").select("id, name, email").in("id", authorIds);
+          setAuthorLabels(userLabelMap((users as UserLabelRow[]) ?? []));
+        } else {
+          setAuthorLabels(new Map());
+        }
+      }
       const ids = list.map((p) => p.id);
       let map = new Map<string, string>();
       if (ids.length > 0) {
@@ -85,7 +97,7 @@ export function PropertiesPage() {
       setCoverUrls(map);
       setLoading(false);
     })();
-  }, []);
+  }, [canSeeAuthors]);
 
   useEffect(() => {
     reload();
@@ -241,6 +253,7 @@ export function PropertiesPage() {
                     <th className="py-3 pr-4 font-medium">Zona</th>
                     <th className="py-3 pr-4 font-medium">Tipo</th>
                     <th className="py-3 pr-4 font-medium">Estado</th>
+                    {canSeeAuthors ? <th className="py-3 pr-4 font-medium">Cargado por</th> : null}
                     <th className="w-20 py-3 text-right font-medium">Acción</th>
                   </tr>
                 </thead>
@@ -270,6 +283,11 @@ export function PropertiesPage() {
                         <td className="py-3 pr-4 text-sm text-[var(--jif-gold)]">
                           {LISTING_STATUS_LABEL[(p.listing_status ?? "AVAILABLE") as ListingStatus]}
                         </td>
+                        {canSeeAuthors ? (
+                          <td className="py-3 pr-4 text-sm text-[var(--muted)]">
+                            {p.created_by_id ? (authorLabels.get(p.created_by_id) ?? "—") : "—"}
+                          </td>
+                        ) : null}
                         <td className="py-3">
                           <div className="flex items-center justify-end gap-1">
                             <Link

@@ -1,6 +1,6 @@
 export type SubscriptionTier = "FREE" | "PRO";
 
-/** Equipo Pilot / impersonación de tenant (RPC get_my_staff_context). */
+/** Equipo Pilot / impersonación de otra inmobiliaria (RPC get_my_staff_context). */
 export type PilotStaffSnapshot = {
   platformStaff: boolean;
   impersonating: boolean;

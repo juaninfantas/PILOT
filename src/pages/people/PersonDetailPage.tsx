@@ -27,7 +27,7 @@ import { normalizeCurrencyCode } from "../../lib/currencies";
 
 type Person = Database["public"]["Tables"]["Person"]["Row"];
 type Pref = Database["public"]["Tables"]["PersonPreference"]["Row"];
-type TenantUserOption = Pick<Database["public"]["Tables"]["User"]["Row"], "id" | "name" | "email">;
+type OrgUserOption = Pick<Database["public"]["Tables"]["User"]["Row"], "id" | "name" | "email">;
 type ContactRow = Database["public"]["Tables"]["PropertyPersonContact"]["Row"];
 
 type PropertySnippet = { id: string; title: string; city_zone: string | null };
@@ -67,6 +67,7 @@ export function PersonDetailPage() {
   const { codeSet } = useCurrencyCatalog();
   const { permissions } = useAuth();
   const canEdit = hasPermission(permissions, "manage_people");
+  const canManageUsers = hasPermission(permissions, "manage_users");
   const [personTab, setPersonTab] = useState("general");
   const [person, setPerson] = useState<Person | null>(null);
   const [pref, setPref] = useState<Pref | null>(null);
@@ -77,10 +78,10 @@ export function PersonDetailPage() {
   const [saving, setSaving] = useState(false);
   const [personFormKey, setPersonFormKey] = useState(0);
   const [buyerCriteriaFormKey, setBuyerCriteriaFormKey] = useState(0);
-  const [tenantUsers, setTenantUsers] = useState<TenantUserOption[]>([]);
-  const [linkedUserRow, setLinkedUserRow] = useState<TenantUserOption | null>(null);
+  const [orgUsers, setOrgUsers] = useState<OrgUserOption[]>([]);
+  const [linkedUserRow, setLinkedUserRow] = useState<OrgUserOption | null>(null);
 
-  function sortTenantUsers(users: TenantUserOption[]): TenantUserOption[] {
+  function sortOrgUsers(users: OrgUserOption[]): OrgUserOption[] {
     return [...users].sort((a, b) => {
       const la = (a.name ?? a.email ?? "").toLocaleLowerCase("es");
       const lb = (b.name ?? b.email ?? "").toLocaleLowerCase("es");
@@ -132,17 +133,17 @@ export function PersonDetailPage() {
     const orgId = loadedPerson?.organization_id;
     const linkedId = loadedPerson?.linked_user_id;
 
-    let resolvedLinked: TenantUserOption | null = null;
+    let resolvedLinked: OrgUserOption | null = null;
     if (!linkedId) {
       setLinkedUserRow(null);
     } else {
       const { data: u } = await supabase.from("User").select("id, name, email").eq("id", linkedId).maybeSingle();
-      resolvedLinked = (u as TenantUserOption) ?? null;
+      resolvedLinked = (u as OrgUserOption) ?? null;
       setLinkedUserRow(resolvedLinked);
     }
 
-    if (!canEdit || !orgId) {
-      setTenantUsers([]);
+    if (!canManageUsers || !orgId) {
+      setOrgUsers([]);
     } else {
       const { data: mem } = await supabase
         .from("OrganizationMembership")
@@ -152,18 +153,18 @@ export function PersonDetailPage() {
       const userIds = [...new Set((mem ?? []).map((m) => (m as { user_id: string }).user_id))];
       const { data: users } = userIds.length
         ? await supabase.from("User").select("id, name, email").in("id", userIds)
-        : { data: [] as TenantUserOption[] };
-      let list = sortTenantUsers((users as TenantUserOption[]) ?? []);
+        : { data: [] as OrgUserOption[] };
+      let list = sortOrgUsers((users as OrgUserOption[]) ?? []);
       if (resolvedLinked?.id && !list.some((u) => u.id === resolvedLinked.id)) {
-        list = sortTenantUsers([...list, resolvedLinked]);
+        list = sortOrgUsers([...list, resolvedLinked]);
       }
-      setTenantUsers(list);
+      setOrgUsers(list);
     }
   }
 
   useEffect(() => {
     void load();
-  }, [id, canEdit]);
+  }, [id, canManageUsers]);
 
   useEffect(() => {
     setBuyerRows(parseBuyerExtraJson(pref?.buyer_extra_json ?? null).rows);
@@ -190,6 +191,7 @@ export function PersonDetailPage() {
   const showClientIds = profiles.includes("cliente");
   const showCompany = profiles.some(personProfileUsesCompanyField);
   const showBuyerScoring = profiles.includes("interesado");
+  const canLinkUser = profiles.some((p) => p === "agente" || p === "referral");
 
   async function saveAll(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -216,7 +218,6 @@ export function PersonDetailPage() {
         address_line,
         tax_id,
         trade_name,
-        linked_user_id,
       })
       .eq("id", id);
 
@@ -253,6 +254,26 @@ export function PersonDetailPage() {
         .insert(toAdd.map((profile) => ({ person_id: id, profile })));
       if (insErr) {
         setMsg(insErr.message);
+        setSaving(false);
+        return;
+      }
+    }
+
+    const hasAgentProfile = profiles.some((p) => p === "agente" || p === "referral");
+    const linkChanged = linked_user_id !== (person.linked_user_id ?? null);
+
+    if (linkChanged && canManageUsers) {
+      if (linked_user_id && !hasAgentProfile) {
+        setMsg("Para vincular un usuario, la persona debe tener perfil Agente.");
+        setSaving(false);
+        return;
+      }
+      const { error: linkErr } = await supabase.rpc("link_org_person_to_user", {
+        p_person_id: id,
+        p_user_id: linked_user_id,
+      });
+      if (linkErr) {
+        setMsg(linkErr.message);
         setSaving(false);
         return;
       }
@@ -511,16 +532,18 @@ export function PersonDetailPage() {
                 <Label htmlFor="name">Nombre *</Label>
                 <Input id="name" name="name" defaultValue={person.name} required className="mt-1" />
               </div>
+              {canManageUsers ? (
               <div className="flex flex-col md:col-span-6">
-                <Label htmlFor="linked_user_id">Vinculación</Label>
+                <Label htmlFor="linked_user_id">Vinculación (usuario Pilot)</Label>
                 <select
                   id="linked_user_id"
                   name="linked_user_id"
                   defaultValue={person.linked_user_id ?? ""}
-                  className="mt-1 h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm text-[var(--foreground)]"
+                  disabled={!canLinkUser}
+                  className="mt-1 h-10 w-full rounded-lg border border-[var(--border)] bg-[#fffcf7] px-3 text-sm text-[var(--foreground)] disabled:opacity-60"
                 >
                   <option value="">Sin vincular</option>
-                  {tenantUsers.map((u) => {
+                  {orgUsers.map((u) => {
                     const primary = u.name?.trim() || u.email?.trim() || u.id;
                     const suffix = u.name?.trim() && u.email?.trim() ? ` (${u.email})` : "";
                     return (
@@ -531,7 +554,13 @@ export function PersonDetailPage() {
                     );
                   })}
                 </select>
+                {!canLinkUser ? (
+                  <p className="mt-1 text-xs text-[var(--muted)]">Agregá el perfil Agente para vincular una cuenta de acceso.</p>
+                ) : (
+                  <p className="mt-1 text-xs text-[var(--muted)]">Un usuario por persona agente en la inmobiliaria.</p>
+                )}
               </div>
+              ) : null}
               <div className="md:col-span-6">
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" defaultValue={person.email ?? ""} className="mt-1" />

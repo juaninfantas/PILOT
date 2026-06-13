@@ -6,7 +6,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { getStoredOrgSlug, setStoredOrgSlug } from "../lib/orgSlugStorage";
+import { completeOrganizationJoin } from "../lib/completeOrganizationJoin";
+import { getStoredOrgSlug } from "../lib/orgSlugStorage";
+import { EMAIL_NOT_CONFIRMED_HINT, formatAuthError, isEmailNotConfirmedError } from "../lib/auth-messages";
 
 export function LoginPage() {
   const nav = useNavigate();
@@ -16,11 +18,15 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [orgSlug, setOrgSlug] = useState(() => getStoredOrgSlug());
   const [error, setError] = useState<string | null>(null);
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setEmailNotConfirmed(false);
+    setResendMsg(null);
     const slugNorm = orgSlug.trim().toLowerCase();
     if (!slugNorm) {
       setError("Ingresá el identificador de la inmobiliaria (slug).");
@@ -30,25 +36,41 @@ export function LoginPage() {
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
     if (err) {
       setPending(false);
-      setError(err.message);
+      if (isEmailNotConfirmedError(err)) {
+        setEmailNotConfirmed(true);
+        setError(formatAuthError(err));
+      } else {
+        setError(formatAuthError(err));
+      }
       return;
     }
-    const { data: ok, error: rerr } = await supabase.rpc("assert_organization_slug_matches_membership", {
-      p_slug: slugNorm,
-    });
+    const join = await completeOrganizationJoin(slugNorm);
     setPending(false);
-    if (rerr) {
+    if (!join.ok) {
       await supabase.auth.signOut();
-      setError(rerr.message);
+      setError(join.error);
       return;
     }
-    if (!ok) {
-      await supabase.auth.signOut();
-      setError("No pertenecés a esta inmobiliaria o el slug no coincide.");
-      return;
-    }
-    setStoredOrgSlug(slugNorm);
     nav(loc.state?.from ?? "/dashboard", { replace: true });
+  }
+
+  async function resendConfirmation() {
+    setResendMsg(null);
+    const emailNorm = email.trim();
+    if (!emailNorm) {
+      setResendMsg("Ingresá tu correo arriba para reenviar la confirmación.");
+      return;
+    }
+    const { error: resendErr } = await supabase.auth.resend({
+      type: "signup",
+      email: emailNorm,
+      options: { emailRedirectTo: `${window.location.origin}/login` },
+    });
+    if (resendErr) {
+      setResendMsg(formatAuthError(resendErr));
+      return;
+    }
+    setResendMsg("Te reenviamos el correo de confirmación. Revisá tu bandeja.");
   }
 
   useEffect(() => {
@@ -57,9 +79,8 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-10 bg-[var(--background)] p-4">
-      <Link to="/" className="text-center hover:opacity-90">
-        <p className="jif-caps text-[0.65rem] tracking-[0.3em] text-[var(--muted)]">Pilot</p>
-        <span className="font-pilot-logo mt-2 block text-[clamp(3rem,12vw,5rem)] leading-[0.9] text-[var(--foreground)]">
+      <Link to="/" className="block text-center outline-offset-2 hover:opacity-90">
+        <span className="font-pilot-logo block text-[clamp(3rem,10vw,4.5rem)] leading-none text-[var(--foreground)]">
           Pilot.
         </span>
       </Link>
@@ -105,7 +126,18 @@ export function LoginPage() {
               required
             />
           </div>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {emailNotConfirmed ? (
+            <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+              <p className="font-medium">{error}</p>
+              <p>{EMAIL_NOT_CONFIRMED_HINT}</p>
+              <Button type="button" variant="secondary" size="sm" className="w-full" onClick={() => void resendConfirmation()}>
+                Reenviar correo de confirmación
+              </Button>
+              {resendMsg ? <p className="text-xs">{resendMsg}</p> : null}
+            </div>
+          ) : error ? (
+            <p className="text-sm text-red-600">{error}</p>
+          ) : null}
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? "Entrando…" : "Entrar"}
           </Button>

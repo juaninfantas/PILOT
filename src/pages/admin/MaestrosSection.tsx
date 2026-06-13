@@ -5,10 +5,11 @@ import { AdminTenantsSection } from "./AdminTenantsSection";
 export type MaestrosSectionProps = {
   showMonedas: boolean;
   showGeo: boolean;
-  showTenant: boolean;
+  /** Pilot staff: alta y gestión de inmobiliarias (organizaciones). */
+  showInmobiliariasPilot: boolean;
 };
 
-export function MaestrosSection({ showMonedas, showGeo, showTenant }: MaestrosSectionProps) {
+export function MaestrosSection({ showMonedas, showGeo, showInmobiliariasPilot }: MaestrosSectionProps) {
   return (
     <div className="space-y-10">
       <header className="border-b border-[var(--jif-line)] pb-6">
@@ -31,13 +32,13 @@ export function MaestrosSection({ showMonedas, showGeo, showTenant }: MaestrosSe
         </section>
       ) : null}
 
-      {showTenant ? (
-        <section id="maestros-tenant" className="scroll-mt-6 space-y-4 rounded-xl border border-[var(--jif-line)] bg-[var(--card)] p-6">
+      {showInmobiliariasPilot ? (
+        <section id="maestros-inmobiliarias" className="scroll-mt-6 space-y-4 rounded-xl border border-[var(--jif-line)] bg-[var(--card)] p-6">
           <AdminTenantsSection embedded />
         </section>
       ) : null}
 
-      {!showMonedas && !showGeo && !showTenant ? (
+      {!showMonedas && !showGeo && !showInmobiliariasPilot ? (
         <p className="text-sm text-[var(--muted)]">No tenés permisos para ver maestros en esta cuenta.</p>
       ) : null}
     </div>

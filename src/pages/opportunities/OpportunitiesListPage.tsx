@@ -20,19 +20,32 @@ export function OpportunitiesListPage() {
   const canManage = hasPermission(permissions, "manage_opportunities");
   const [rows, setRows] = useState<Opp[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
   const loadRows = useCallback(async () => {
     setLoading(true);
-    setActionError(null);
-    const { data: o } = await supabase.from("Opportunity").select("*").order("updated_at", { ascending: false });
+    setLoadError(null);
+    const { data: o, error: oppErr } = await supabase.from("Opportunity").select("*").order("updated_at", { ascending: false });
+    if (oppErr) {
+      setRows([]);
+      setLoadError(oppErr.message);
+      setLoading(false);
+      return;
+    }
     const list = (o as Opp[]) ?? [];
     const ids = [...new Set(list.map((x) => x.person_id))];
-    const { data: persons } = ids.length
+    const { data: persons, error: personErr } = ids.length
       ? await supabase.from("Person").select("id, name").in("id", ids)
-      : { data: [] as { id: string; name: string }[] };
+      : { data: [] as { id: string; name: string }[], error: null };
+    if (personErr) {
+      setRows([]);
+      setLoadError(personErr.message);
+      setLoading(false);
+      return;
+    }
     const byId = Object.fromEntries((persons ?? []).map((p) => [p.id, p.name]));
     setRows(list.map((x) => ({ ...x, person_name: byId[x.person_id] })));
     setLoading(false);
@@ -89,6 +102,14 @@ export function OpportunitiesListPage() {
             ) : null}
           </div>
         </header>
+        {loadError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border border-amber-600/50 bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
+            <p>{loadError}</p>
+            <Button type="button" variant="secondary" size="sm" onClick={() => void loadRows()}>
+              Reintentar
+            </Button>
+          </div>
+        ) : null}
         {actionError ? (
           <p className="jif-caps border border-amber-600/50 bg-amber-950/40 px-3 py-2 text-amber-200">{actionError}</p>
         ) : null}
@@ -126,42 +147,52 @@ export function OpportunitiesListPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((o) => (
-                <tr key={o.id} className="border-b border-[var(--jif-line)]/60">
-                  <td className="py-3 pl-4 pr-4 font-medium text-[var(--foreground)] sm:pl-5">{o.title ?? "—"}</td>
-                  <td className="py-3 pr-4 text-[var(--muted)]">{o.person_name ?? "—"}</td>
-                  <td className="py-3 pr-4 text-sm text-[var(--jif-gold)]">{opportunityStatusLabel(o.status)}</td>
-                  <td className="py-3 pr-4 text-xs text-[var(--muted)]">
-                    {new Date(o.updated_at).toLocaleString()}
-                  </td>
-                  <td className="py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <Link
-                        to={`/dashboard/opportunities/${o.id}`}
-                        className="inline-flex size-9 items-center justify-center text-[var(--jif-gold)] transition-colors hover:bg-stone-900/5 hover:text-[var(--foreground)]"
-                        title="Ver ficha"
-                        aria-label="Ver ficha"
-                      >
-                        <Eye className="size-4" strokeWidth={1.75} />
-                      </Link>
-                      {canManage ? (
-                        <button
-                          type="button"
-                          className={cn(
-                            "inline-flex size-9 items-center justify-center text-[var(--muted)] transition-colors",
-                            "hover:bg-red-950/50 hover:text-red-300",
-                          )}
-                          title="Eliminar oportunidad"
-                          aria-label="Eliminar oportunidad"
-                          onClick={() => void deleteOpp(o.id, o.title ?? "")}
-                        >
-                          <Trash2 className="size-4" strokeWidth={1.75} />
-                        </button>
-                      ) : null}
-                    </div>
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-[var(--muted)] sm:px-5">
+                    {rows.length === 0
+                      ? "Todavía no hay oportunidades cargadas."
+                      : "No hay oportunidades que coincidan con los filtros actuales."}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredRows.map((o) => (
+                  <tr key={o.id} className="border-b border-[var(--jif-line)]/60">
+                    <td className="py-3 pl-4 pr-4 font-medium text-[var(--foreground)] sm:pl-5">{o.title ?? "—"}</td>
+                    <td className="py-3 pr-4 text-[var(--muted)]">{o.person_name ?? "—"}</td>
+                    <td className="py-3 pr-4 text-sm text-[var(--jif-gold)]">{opportunityStatusLabel(o.status)}</td>
+                    <td className="py-3 pr-4 text-xs text-[var(--muted)]">
+                      {new Date(o.updated_at).toLocaleString()}
+                    </td>
+                    <td className="py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          to={`/dashboard/opportunities/${o.id}`}
+                          className="inline-flex size-9 items-center justify-center text-[var(--jif-gold)] transition-colors hover:bg-stone-900/5 hover:text-[var(--foreground)]"
+                          title="Ver ficha"
+                          aria-label="Ver ficha"
+                        >
+                          <Eye className="size-4" strokeWidth={1.75} />
+                        </Link>
+                        {canManage ? (
+                          <button
+                            type="button"
+                            className={cn(
+                              "inline-flex size-9 items-center justify-center text-[var(--muted)] transition-colors",
+                              "hover:bg-red-950/50 hover:text-red-300",
+                            )}
+                            title="Eliminar oportunidad"
+                            aria-label="Eliminar oportunidad"
+                            onClick={() => void deleteOpp(o.id, o.title ?? "")}
+                          >
+                            <Trash2 className="size-4" strokeWidth={1.75} />
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

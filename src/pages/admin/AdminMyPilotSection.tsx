@@ -5,7 +5,6 @@ import { hasPermission } from "../../lib/permissions";
 import { Button } from "../../components/ui/button";
 import { PILOT_ACTIVE_FEATURES } from "../../lib/pilot-features";
 import { formatExpiryLabel, tierLabel } from "../../lib/subscriptionDisplay";
-import { InviteSettingsSection } from "../settings/InviteSettingsSection";
 
 export function AdminMyPilotSection() {
   const { permissions } = useAuth();
@@ -51,7 +50,12 @@ export function AdminMyPilotSection() {
         )}
       </section>
 
-      {canInvite ? <InviteSettingsSection /> : null}
+      {canInvite ? (
+        <section className="rounded-xl border border-[var(--jif-line)] bg-[var(--card)] p-6 text-sm text-[var(--muted)]">
+          Las invitaciones y la gestión del equipo están en{" "}
+          <strong className="text-[var(--foreground)]">Administración → Usuarios</strong>.
+        </section>
+      ) : null}
     </div>
   );
 }

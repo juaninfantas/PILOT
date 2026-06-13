@@ -77,7 +77,8 @@ const router = createBrowserRouter([
       { path: "admin/roles", element: <Navigate to="/dashboard/admin?tab=usuarios#roles" replace /> },
       { path: "admin/permissions", element: <Navigate to="/dashboard/admin?tab=usuarios#permissions" replace /> },
       { path: "admin/org", element: <Navigate to="/dashboard/admin?tab=general#organization" replace /> },
-      { path: "admin/tenants", element: <Navigate to="/dashboard/admin?tab=maestros#maestros-tenant" replace /> },
+      // Legacy route kept for compatibility with old links; canonical IA is Maestros > Inmobiliarias.
+      { path: "admin/tenants", element: <Navigate to="/dashboard/admin?tab=maestros#maestros-inmobiliarias" replace /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

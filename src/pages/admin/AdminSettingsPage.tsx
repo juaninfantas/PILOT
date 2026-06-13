@@ -3,10 +3,8 @@ import { createSearchParams, useLocation, useNavigate, useSearchParams } from "r
 import { hasAny, hasPermission } from "../../lib/permissions";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOrganization } from "../../contexts/OrganizationContext";
-import { UsersAdminPage } from "./UsersAdminPage";
-import { GroupsAdminPage } from "./GroupsAdminPage";
-import { RolesAdminPage } from "./RolesAdminPage";
-import { PermissionsAdminPage } from "./PermissionsAdminPage";
+import { OrgUsersAdminSection } from "./OrgUsersAdminSection";
+import { RolesPermisosSection } from "./RolesPermisosSection";
 import { OrganizationBrandSection } from "./OrganizationBrandSection";
 import { AdminConfigurationSection } from "./AdminConfigurationSection";
 import { AdminMyPilotSection } from "./AdminMyPilotSection";
@@ -35,26 +33,27 @@ export function AdminSettingsPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const canPilotTenants = pilotStaff.platformStaff;
+  /** Personal Pilot (plataforma): maestros inmobiliarias y geo compartido. */
+  const isPilotStaff = pilotStaff.platformStaff;
   const showGeneral = hasPermission(permissions ?? [], "manage_users");
-  const canManageGeo = canPilotTenants || hasPermission(permissions ?? [], "manage_users");
+  const canManageGeo = isPilotStaff || hasPermission(permissions ?? [], "manage_users");
   const canCatalog =
     pilotStaff.platformStaff ||
     hasPermission(permissions ?? [], "manage_users") ||
     hasPermission(permissions ?? [], "manage_properties");
-  const showMaestrosTab = canCatalog || canManageGeo || canPilotTenants;
+  const showMaestrosTab = canCatalog || canManageGeo || isPilotStaff;
   const canAccessAdmin =
     hasAny(permissions ?? [], [...ADMIN_PERMS]) ||
-    canPilotTenants ||
+    isPilotStaff ||
     hasPermission(permissions ?? [], "manage_properties");
 
   const activeTab: AdminTab = useMemo(() => {
     if (isTab(tabParam)) {
       if (tabParam === "general" && !showGeneral) {
-        return canPilotTenants ? "maestros" : "configuracion";
+        return isPilotStaff ? "maestros" : "configuracion";
       }
       if (tabParam === "usuarios" && !hasAny(permissions ?? [], ["manage_users", "manage_groups", "manage_roles"])) {
-        return canPilotTenants ? "maestros" : "configuracion";
+        return isPilotStaff ? "maestros" : "configuracion";
       }
       if (tabParam === "maestros" && !showMaestrosTab) {
         return showGeneral ? "general" : "configuracion";
@@ -62,11 +61,12 @@ export function AdminSettingsPage() {
       return tabParam;
     }
     if (showGeneral) return "general";
-    if (canPilotTenants) return "maestros";
+    if (isPilotStaff) return "maestros";
     return "configuracion";
-  }, [tabParam, showGeneral, canPilotTenants, showMaestrosTab, permissions]);
+  }, [tabParam, showGeneral, isPilotStaff, showMaestrosTab, permissions]);
 
   useEffect(() => {
+    // Legacy deep-link compatibility: old ?tab=geo now maps to Maestros (Áreas geo).
     if (tabParam === "geo") {
       if (canManageGeo) {
         navigate(
@@ -82,13 +82,14 @@ export function AdminSettingsPage() {
       }
       return;
     }
+    // Legacy deep-link compatibility: old ?tab=tenants now maps to Maestros (Inmobiliarias).
     if (tabParam === "tenants") {
-      if (canPilotTenants) {
+      if (isPilotStaff) {
         navigate(
           {
             pathname: location.pathname,
             search: `?${createSearchParams({ tab: "maestros" }).toString()}`,
-            hash: "#maestros-tenant",
+            hash: "#maestros-inmobiliarias",
           },
           { replace: true },
         );
@@ -104,7 +105,7 @@ export function AdminSettingsPage() {
     tabParam,
     activeTab,
     canManageGeo,
-    canPilotTenants,
+    isPilotStaff,
     showGeneral,
     navigate,
     location.pathname,
@@ -113,9 +114,9 @@ export function AdminSettingsPage() {
 
   useEffect(() => {
     if (tabParam === "general" && !showGeneral) {
-      setSearchParams({ tab: canPilotTenants ? "maestros" : "configuracion" }, { replace: true });
+      setSearchParams({ tab: isPilotStaff ? "maestros" : "configuracion" }, { replace: true });
     }
-  }, [tabParam, showGeneral, canPilotTenants, setSearchParams]);
+  }, [tabParam, showGeneral, isPilotStaff, setSearchParams]);
 
   useEffect(() => {
     if (tabParam === "maestros" && !showMaestrosTab) {
@@ -124,12 +125,20 @@ export function AdminSettingsPage() {
   }, [tabParam, showMaestrosTab, showGeneral, setSearchParams]);
 
   useEffect(() => {
+    // Legacy hash bookmark: #maestros-tenant → canonical #maestros-inmobiliarias
+    if (location.hash === "#maestros-tenant") {
+      navigate(
+        { pathname: location.pathname, search: location.search, hash: "#maestros-inmobiliarias" },
+        { replace: true },
+      );
+      return;
+    }
     const id = location.hash.replace(/^#/, "");
     if (!id) return;
     window.requestAnimationFrame(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
-  }, [activeTab, location.hash]);
+  }, [activeTab, location.hash, location.pathname, location.search, navigate]);
 
   function selectTab(id: AdminTab) {
     if (id === "general" && !showGeneral) return;
@@ -165,7 +174,7 @@ export function AdminSettingsPage() {
       <header className="border-b border-[var(--jif-line)] pb-6">
         <h1 className="jif-hero">Administración</h1>
         <p className="jif-caps jif-dim mt-2" style={{ fontSize: "0.65rem" }}>
-          Inmobiliaria, funnels, equipo, MyPilot{canPilotTenants ? " y maestros Pilot" : ""}.
+          Inmobiliaria, funnels, equipo, MyPilot{isPilotStaff ? " y maestros Pilot" : ""}.
         </p>
       </header>
 
@@ -186,23 +195,13 @@ export function AdminSettingsPage() {
           <div className="space-y-16">
             {hasPermission(permissions, "manage_users") ? (
               <section id="users" className="scroll-mt-6">
-                <UsersAdminPage />
-              </section>
-            ) : null}
-            {hasPermission(permissions, "manage_groups") ? (
-              <section id="groups" className="scroll-mt-6">
-                <GroupsAdminPage />
+                <OrgUsersAdminSection />
               </section>
             ) : null}
             {hasPermission(permissions, "manage_roles") ? (
-              <>
-                <section id="roles" className="scroll-mt-6">
-                  <RolesAdminPage />
-                </section>
-                <section id="permissions" className="scroll-mt-6">
-                  <PermissionsAdminPage />
-                </section>
-              </>
+              <section id="roles" className="scroll-mt-6">
+                <RolesPermisosSection />
+              </section>
             ) : null}
           </div>
         ) : null}
@@ -210,7 +209,7 @@ export function AdminSettingsPage() {
         {activeTab === "mypilot" ? <AdminMyPilotSection /> : null}
 
         {activeTab === "maestros" && showMaestrosTab ? (
-          <MaestrosSection showMonedas={canCatalog} showGeo={canManageGeo} showTenant={canPilotTenants} />
+          <MaestrosSection showMonedas={canCatalog} showGeo={canManageGeo} showInmobiliariasPilot={isPilotStaff} />
         ) : null}
       </div>
     </div>

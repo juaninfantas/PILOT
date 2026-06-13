@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { hasPermission } from "../../lib/permissions";
+import { userLabelMap, type UserLabelRow } from "../../lib/created-by-display";
 import { RequirePermission } from "../../components/RequirePermission";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -20,27 +21,50 @@ type Person = Database["public"]["Tables"]["Person"]["Row"];
 export function PeoplePage() {
   const { permissions } = useAuth();
   const canManage = hasPermission(permissions, "manage_people");
+  const canSeeAuthors = hasPermission(permissions, "manage_users");
   const [rows, setRows] = useState<Person[]>([]);
+  const [authorLabels, setAuthorLabels] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [profilesByPerson, setProfilesByPerson] = useState<Record<string, string[]>>({});
   const [query, setQuery] = useState("");
   const [profileFilter, setProfileFilter] = useState("ALL");
 
-  useEffect(() => {
-    void (async () => {
-      const [{ data: people }, { data: profs }] = await Promise.all([
-        supabase.from("Person").select("*").order("name"),
-        supabase.from("PersonProfile").select("person_id, profile"),
-      ]);
-      setRows((people as Person[]) ?? []);
-      const map: Record<string, string[]> = {};
-      for (const item of (profs as { person_id: string; profile: string }[]) ?? []) {
-        if (!map[item.person_id]) map[item.person_id] = [];
-        map[item.person_id].push(item.profile);
-      }
-      setProfilesByPerson(map);
+  async function loadPeople() {
+    setLoading(true);
+    setLoadError(null);
+    const [{ data: people, error: peopleErr }, { data: profs, error: profileErr }] = await Promise.all([
+      supabase.from("Person").select("*").order("name"),
+      supabase.from("PersonProfile").select("person_id, profile"),
+    ]);
+    if (peopleErr || profileErr) {
+      setRows([]);
+      setProfilesByPerson({});
+      setLoadError(peopleErr?.message ?? profileErr?.message ?? "No se pudieron cargar las personas.");
       setLoading(false);
-    })();
+      return;
+    }
+    setRows((people as Person[]) ?? []);
+    if (canSeeAuthors) {
+      const authorIds = [...new Set(((people as Person[]) ?? []).map((p) => p.created_by_id).filter(Boolean))] as string[];
+      if (authorIds.length > 0) {
+        const { data: users } = await supabase.from("User").select("id, name, email").in("id", authorIds);
+        setAuthorLabels(userLabelMap((users as UserLabelRow[]) ?? []));
+      } else {
+        setAuthorLabels(new Map());
+      }
+    }
+    const map: Record<string, string[]> = {};
+    for (const item of (profs as { person_id: string; profile: string }[]) ?? []) {
+      if (!map[item.person_id]) map[item.person_id] = [];
+      map[item.person_id].push(item.profile);
+    }
+    setProfilesByPerson(map);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadPeople();
   }, []);
 
   const filteredRows = useMemo(() => {
@@ -82,6 +106,14 @@ export function PeoplePage() {
             ) : null}
           </div>
         </header>
+        {loadError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border border-amber-600/50 bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
+            <p>{loadError}</p>
+            <Button type="button" variant="secondary" size="sm" onClick={() => void loadPeople()}>
+              Reintentar
+            </Button>
+          </div>
+        ) : null}
         {loading ? <p className="jif-caps jif-dim">Cargando…</p> : null}
         <div className="flex flex-wrap items-center gap-3">
           <Input
@@ -117,37 +149,53 @@ export function PeoplePage() {
                 <th className="py-3 pr-4 font-medium">Email</th>
                 <th className="py-3 pr-4 font-medium">Teléfono</th>
                 <th className="py-3 pr-4 font-medium">Perfiles</th>
+                {canSeeAuthors ? <th className="py-3 pr-4 font-medium">Cargado por</th> : null}
                 <th className="w-20 py-3 text-right font-medium">
                   <span className="sr-only">Acción</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((p) => (
-                <tr key={p.id} className="border-b border-[var(--jif-line)]/60">
-                  <td className="py-3 pl-4 pr-4 font-medium text-[var(--foreground)] sm:pl-5">{p.name}</td>
-                  <td className="py-3 pr-4 text-[var(--muted)]">{p.email ?? "—"}</td>
-                  <td className="py-3 pr-4 text-[var(--muted)]">{p.phone ?? "—"}</td>
-                  <td className="py-3 pr-4 text-sm text-[var(--muted)]">
-                    {(profilesByPerson[p.id] ?? []).map(formatPersonProfileLabel).join(", ") || "—"}
-                  </td>
-                  <td className="py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <Link
-                        to={`/dashboard/people/${p.id}`}
-                        className={cn(
-                          "inline-flex size-9 items-center justify-center text-[var(--jif-gold)] transition-colors",
-                          "hover:bg-stone-900/5 hover:text-[var(--foreground)]",
-                        )}
-                        aria-label="Ver ficha"
-                        title="Ver ficha"
-                      >
-                        <Eye className="size-4" strokeWidth={1.75} />
-                      </Link>
-                    </div>
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={canSeeAuthors ? 6 : 5} className="px-4 py-6 text-center text-sm text-[var(--muted)] sm:px-5">
+                    {rows.length === 0
+                      ? "Todavía no hay personas cargadas."
+                      : "No hay personas que coincidan con los filtros actuales."}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredRows.map((p) => (
+                  <tr key={p.id} className="border-b border-[var(--jif-line)]/60">
+                    <td className="py-3 pl-4 pr-4 font-medium text-[var(--foreground)] sm:pl-5">{p.name}</td>
+                    <td className="py-3 pr-4 text-[var(--muted)]">{p.email ?? "—"}</td>
+                    <td className="py-3 pr-4 text-[var(--muted)]">{p.phone ?? "—"}</td>
+                    <td className="py-3 pr-4 text-sm text-[var(--muted)]">
+                      {(profilesByPerson[p.id] ?? []).map(formatPersonProfileLabel).join(", ") || "—"}
+                    </td>
+                    {canSeeAuthors ? (
+                      <td className="py-3 pr-4 text-sm text-[var(--muted)]">
+                        {p.created_by_id ? (authorLabels.get(p.created_by_id) ?? "—") : "—"}
+                      </td>
+                    ) : null}
+                    <td className="py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          to={`/dashboard/people/${p.id}`}
+                          className={cn(
+                            "inline-flex size-9 items-center justify-center text-[var(--jif-gold)] transition-colors",
+                            "hover:bg-stone-900/5 hover:text-[var(--foreground)]",
+                          )}
+                          aria-label="Ver ficha"
+                          title="Ver ficha"
+                        >
+                          <Eye className="size-4" strokeWidth={1.75} />
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

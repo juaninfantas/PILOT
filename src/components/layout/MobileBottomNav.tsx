@@ -11,8 +11,8 @@ type MobileBottomNavProps = {
 };
 
 export function MobileBottomNav({ permissions }: MobileBottomNavProps) {
-  const showNotes = hasPermission(permissions, "view_dashboard");
-  const showCalendar = hasPermission(permissions, "view_reports");
+  const showNotes = hasPermission(permissions, "view_notes");
+  const showCalendar = hasPermission(permissions, "view_calendar");
   const showProperties = hasPermission(permissions, "view_properties");
 
   if (!showNotes && !showCalendar && !showProperties) return null;

@@ -75,6 +75,25 @@ body {
   letter-spacing: 0.02em;
 }
 
+.pilot-logo-mark {
+  container-type: size;
+  display: inline-grid;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 22%;
+  background: var(--neo-pop);
+  color: var(--foreground);
+  line-height: 1;
+  user-select: none;
+}
+
+.pilot-logo-mark > span {
+  font-family: "Great Vibes", "Brush Script MT", "Snell Roundhand", cursive, serif;
+  font-size: 68cqmin;
+  line-height: 0.85;
+  transform: translateY(0.04em);
+}
+
 .jif-page {
   max-width: 1200px;
 }

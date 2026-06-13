@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, Globe, Menu, X } from "lucide-react";
+import { PilotLogo } from "../brand/PilotLogo";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
 
@@ -60,11 +61,11 @@ export function LandingNavbar() {
         <div className="flex min-w-0 flex-1 items-center gap-6 lg:gap-10">
           <Link
             to="/"
-            className="shrink-0 font-neo text-4xl font-bold leading-none tracking-tight text-[var(--foreground)] md:text-5xl"
+            className="shrink-0 outline-offset-2 hover:opacity-90"
             onClick={close}
             aria-label="Pilot inicio"
           >
-            P.
+            <PilotLogo className="h-10 w-10 md:h-12 md:w-12" />
           </Link>
 
           <nav className="hidden lg:flex lg:flex-1 lg:items-center lg:gap-1" aria-label="Principal">

@@ -68,7 +68,7 @@ export function ReportsPipelinePage({ embedded = false }: { embedded?: boolean }
   );
 
   return (
-    <RequirePermission slug="view_reports">
+    <RequirePermission slug="view_opportunities">
       <NeoPageShell className={embedded ? "scroll-mt-10 space-y-4 border-t border-[var(--jif-line)] pt-10" : undefined}>
         {embedded ? (
           <div className="mb-4 flex flex-wrap items-end justify-between gap-4">

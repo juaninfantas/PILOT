@@ -112,7 +112,7 @@ export function StaffTenantSwitcher({ compact }: StaffTenantSwitcherProps) {
           {compact ? <Headphones className="size-4" /> : (
             <>
               <Building2 className="size-4" />
-              Tenant
+              Inmobiliaria
             </>
           )}
         </Button>

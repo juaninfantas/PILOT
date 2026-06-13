@@ -275,7 +275,7 @@ export function FunnelsPage({ embedded = false }: { embedded?: boolean }) {
     selectedStages[selectedStages.length - 1]?.id === moveModal.sourceStageId;
 
   return (
-    <RequirePermission slug="view_opportunities">
+    <RequirePermission slug="view_funnels">
       <>
       <div
         className={

@@ -20,7 +20,9 @@ function barPct(value: number, max: number) {
 export function DashboardPage() {
   const { permissions } = useAuth();
   const canReports = hasPermission(permissions, "view_reports");
+  const canFunnels = hasPermission(permissions, "view_funnels");
   const canOpportunities = hasPermission(permissions, "view_opportunities");
+  const canCalendar = hasPermission(permissions, "view_calendar");
   const [opps, setOpps] = useState<{ status: OppStatus }[]>([]);
   const [stock, setStock] = useState(0);
 
@@ -143,26 +145,32 @@ export function DashboardPage() {
                 <Link to="/dashboard/reports/overview" className={reportLinkCls}>
                   Overview
                 </Link>
-                <Link to="/dashboard/reports/pipeline" className={reportLinkCls}>
-                  Pipeline
-                </Link>
                 <Link to="/dashboard/reports/price-geo" className={reportLinkCls}>
                   Precios geo
-                </Link>
-                <Link to="/dashboard/reports/final-states" className={reportLinkCls}>
-                  Estados finales
-                </Link>
-                <Link to="/dashboard/reports/calendar" className={reportLinkCls}>
-                  Calendario
                 </Link>
               </>
             ) : null}
             {canOpportunities ? (
+              <>
+                <Link to="/dashboard/reports/pipeline" className={reportLinkCls}>
+                  Pipeline
+                </Link>
+                <Link to="/dashboard/reports/final-states" className={reportLinkCls}>
+                  Estados finales
+                </Link>
+              </>
+            ) : null}
+            {canCalendar ? (
+              <Link to="/dashboard/reports/calendar" className={reportLinkCls}>
+                Calendario
+              </Link>
+            ) : null}
+            {canFunnels ? (
               <Link to="/dashboard/reports/funnels" className={reportLinkCls}>
                 Funnels
               </Link>
             ) : null}
-            {!canReports && !canOpportunities ? (
+            {!canReports && !canOpportunities && !canCalendar && !canFunnels ? (
               <p className="jif-caps px-1 py-2 text-[0.6rem] leading-snug text-[var(--muted)]">Sin accesos rápidos.</p>
             ) : null}
           </NeoCard>
